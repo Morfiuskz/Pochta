@@ -1,0 +1,1 @@
+{"$schema":"../gen/schemas/desktop-schema.json","identifier":"main-capability","description":"Only the main local window may access mail commands and native save dialogs.","windows":["main"],"permissions":["core:default","dialog:allow-save"]}
