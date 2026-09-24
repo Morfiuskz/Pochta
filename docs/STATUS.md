@@ -1,6 +1,6 @@
 # Статус
 
-Дата: 2026-09-24. Приложение переименовано в «Почта», добавлены onboarding и OAuth-инфраструктура. Реализован MVP. Основной пользовательский сценарий проверен через native UI на изолированных локальных IMAP/SMTP-серверах. Windows NSIS сборка предыдущего MVP успешна; она не содержит описанного ниже нового onboarding. Новые изменения проверяются на macOS.
+Дата: 2026-09-25. Приложение переименовано в «Почта», добавлены onboarding и OAuth-инфраструктура. Реализован MVP. Основной пользовательский сценарий проверен через native UI на изолированных локальных IMAP/SMTP-серверах. Windows NSIS сборка предыдущего MVP успешна; она не содержит описанного ниже нового onboarding. Новые изменения проверяются на macOS.
 
 ## Текущее продолжение: onboarding и OAuth
 
@@ -9,7 +9,7 @@
 - Отдельные методы Password/OAuth, backward-compatible serde default для существующих аккаунтов. Сохранение требует успешной проверки IMAP и SMTP.
 - Яндекс: реализованы code + PKCE S256/state, loopback callback, browser login и IMAP/SMTP XOAUTH2; требуется Client ID владельца. Официальный refresh требует Client Secret, поэтому без broker после истечения токена UI предлагает безопасный повторный вход.
 - Google: реализован официальный Desktop flow через системный браузер — Authorization Code + PKCE/state, отдельный loopback callback, scope `https://mail.google.com/`, IMAP/SMTP XOAUTH2, secure storage и автоматический refresh. Gmail/Googlemail распознаются напрямую; Google Workspace предлагается только по ISPDB-серверам Google или ручному выбору. Требуется Desktop Client ID владельца и настройка consent screen/test users.
-- Mail: существующие клиентский PKCE/OIDC/XOAUTH2 и refresh оставлены без изменений. Broker не развёрнут; app-password/manual fallback работает. Microsoft OAuth пока не реализован; Outlook не предлагает пароль как замену OAuth.
+- Mail: официально подтверждены discovery, PKCE S256/state, `openid mail.imap offline_access`, refresh token и единый XOAUTH2 bearer format для IMAP/SMTP. Allowlist обновлён для актуальных endpoints на `o2.mail.ru`. Обмен и refresh требуют Client Secret, поэтому остаются за HTTPS broker; broker не развёрнут, loopback redirect не проверен при регистрации. Для VK WorkSpace/custom-domain OAuth Mail публично не подтверждён — используется app-password/manual fallback. Microsoft OAuth пока не реализован; Outlook не предлагает пароль как замену OAuth.
 - Токены только в системном vault, не IPC/SQLite/log. OAuth-хосты ограничены provider; TLS validation сохранена. Конфигурация и контракт broker: [OAUTH.md](OAUTH.md).
 - Manual IMAP/SMTP, TLS/STARTTLS/None, отдельные credentials SMTP работают; POP3 явно отключён («позже»).
 - В браузере проверены компактная форма, Яндекс, app-password, неизвестный домен и ручной fallback. Исправлено сохранение чужого preset при возврате и смене email.
@@ -23,7 +23,7 @@
 - Cargo check, Clippy all-targets с `-D warnings`, rustfmt: успешно. Есть прежнее предупреждение future incompatibility `imap-proto 0.10.2`.
 - Vite production build: успешно. Tauri release `.app`: успешно, `src-tauri/target/release/bundle/macos/Почта.app`. Native запуск, новое имя, onboarding и понятный отказ OAuth без конфигурации проверены.
 - Native ISPDB: настройки GMX загружены; HTTP 404 для Fastmail корректно перевёл в manual fallback. Пароли и реальные аккаунты для этой проверки не использовались.
-- Реальный Yandex/Google OAuth не проверен: developer credentials не предоставлены. На Windows ещё нужны browser callback, Credential Manager для tokens, IMAP/SMTP XOAUTH2 и Google refresh; Mail broker не развёрнут.
+- Реальный Yandex/Google OAuth не проверен: developer credentials не предоставлены. На Windows ещё нужны browser callback, Credential Manager для tokens, IMAP/SMTP XOAUTH2 и Google refresh; для Mail нужны зарегистрированное OAuth Mail приложение, принятый loopback redirect, развёрнутый broker и live-проверка обычного Mail-аккаунта. Поддержка OAuth для VK WorkSpace/custom-domain требует отдельного официального подтверждения.
 
 ## Реализовано
 

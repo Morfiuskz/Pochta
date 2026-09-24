@@ -54,9 +54,23 @@ Release prerequisite / TODO — сейчас не выполнять:
 
 ## Mail / VK Mail
 
-[Официальная документация Mail OAuth](https://oauth.mail.ru/docs) теперь перенаправляет в документацию VK ID: OAuth Mail остаётся для продуктового доступа к почте. Нужны зарегистрированное приложение Mail, собственный Client ID, Client Secret на сервере владельца, зарегистрированный redirect и разрешение `openid mail.imap offline_access` (`prompt=consent`). Обычный социальный вход VK ID не заменяет доступ к IMAP.
+[Официальная документация OAuth Mail](https://id.vk.ru/about/business/go/docs/ru/vkid/latest/oauth/oauth-mail/index) описывает OAuth Mail как отдельный продуктовый доступ к API Mail, включая IMAP/SMTP, и предупреждает, что обычный вход через Mail следует переносить на VK ID. Для почтового клиента нужен именно OAuth Mail, а не социальный VK ID login.
 
-Клиентская часть реализована: OpenID discovery `https://account.mail.ru/.well-known/openid-configuration`, PKCE/state, browser callback, запрос обмена/refresh, secure storage и XOAUTH2. Официальный обмен кода требует server-side Basic authentication с Client Secret. Поэтому Mail включается **только с настроенным HTTPS brokerUrl**. В репозитории нет развёрнутого broker-сервиса: владелец должен предоставить его вместе с зарегистрированными credentials. До этого Mail OAuth не готов к реальному использованию; app-password IMAP/SMTP работает независимо.
+Подтверждённые параметры:
+
+- приложение Mail создаётся в [кабинете OAuth Mail](https://o2.mail.ru/app/); владелец получает Client ID и Client Secret, регистрирует точный `redirect_uri` и запрашиваемые права;
+- endpoints нужно получать из [OpenID Connect discovery](https://account.mail.ru/.well-known/openid-configuration), потому что документация прямо предупреждает, что URL могут меняться. Сейчас discovery возвращает authorization endpoint `https://o2.mail.ru/login` и token endpoint `https://o2.mail.ru/api/v1/oidc/token/issue`;
+- scopes для этого клиента: `openid mail.imap offline_access`, разделённые пробелами. `openid` обязателен, `mail.imap` разрешает почтовый протокол и XOAUTH2, `offline_access` вместе с `prompt=consent` выдаёт refresh token. Отдельного scope `mail.smtp` официальная документация не перечисляет: тот же access token показан для XOAUTH2 на IMAP и SMTP;
+- PKCE поддерживается; discovery объявляет `S256`, а при обмене authorization code документация требует соответствующий `code_verifier`. Проверка `state` обязательна в клиенте;
+- refresh token выдаётся при `offline_access` + `prompt=consent` и действует 30 суток после последнего получения access token;
+- token endpoint поддерживает только client authentication `client_secret_basic` и `client_secret_post`; официальный пример выполняет обмен с сервера и передаёт Client Secret через HTTP Basic;
+- XOAUTH2 для `imap.mail.ru` и `smtp.mail.ru` использует SASL payload `user=<email>\x01auth=Bearer <access_token>\x01\x01`, закодированный Base64. Официальные серверы и порты: IMAP 993/TLS, SMTP 465/TLS.
+
+Документация требует точного совпадения зарегистрированного `redirect_uri` и допускает в нём схемы HTTP или HTTPS, но отдельно не гарантирует регистрацию loopback URI для desktop/installed application. Поэтому `http://127.0.0.1:43822/oauth/callback` необходимо подтвердить в кабинете конкретного приложения Mail; без принятого Mail redirect и live-проверки flow нельзя считать завершённым.
+
+[Официальная справка обычной Почты Mail](https://help.mail.ru/mail/security/protection/settings/) подтверждает OAuth для внешних почтовых программ, а [инструкция подключения клиента](https://help.mail.ru/mail/login/mailer/) отдельно сохраняет fallback через пароль приложения. Для VK WorkSpace/custom-domain ящиков [публичная инструкция для почтовых клиентов](https://workspace.vk.ru/docs/saas/ru/mail/login/client-password) подтверждает пароль приложения, но не подтверждает применение OAuth Mail к таким ящикам. До согласования с Mail/VK WorkSpace для них следует использовать пароль приложения, а OAuth не заявлять как гарантированно поддерживаемый.
+
+Клиентская часть реализована: актуальный OpenID discovery и ограничение OAuth endpoints доменами Mail, системный браузер, PKCE S256/state, loopback callback, обмен authorization code и refresh через broker, secure storage и стандартный IMAP/SMTP XOAUTH2. Client Secret нельзя безопасно встроить в desktop-бинарь, поэтому Mail включается **только с настроенным HTTPS `brokerUrl`**. В репозитории нет развёрнутого broker-сервиса: владелец должен зарегистрировать OAuth Mail приложение, подтвердить redirect, безопасно разместить Client Secret и развернуть broker. До этого Mail OAuth не готов к реальному использованию; app-password IMAP/SMTP работает независимо.
 
 ### Контракт HTTPS broker
 
@@ -65,7 +79,7 @@ Release prerequisite / TODO — сейчас не выполнять:
 - `grant_type=authorization_code`, `client_id`, `redirect_uri`, `code`, `code_verifier`;
 - либо `grant_type=refresh_token`, `client_id`, `refresh_token`.
 
-Сервер закрепляет собственные client ID и допустимые redirect URI, ограничивает размер/частоту запросов, не логирует тела/токены и не сохраняет их. Он получает актуальный token endpoint из официального Mail OpenID discovery, добавляет Basic `client_id:client_secret`, делает HTTPS POST и возвращает только `{ "access_token": "…", "refresh_token": "…", "expires_in": 3600 }`. Секрет хранится в серверном secret manager. Ошибки — HTTP 4xx/5xx без секретов. Ответы — `Cache-Control: no-store`. Broker не должен быть произвольным HTTP-прокси. Для Яндекса аналогичный endpoint обращается к официальному `/token`, добавляя credentials приложения; при PKCE сохраняет `code_verifier` в запросе.
+Сервер закрепляет собственные client ID и допустимые redirect URI, принимает только перечисленные grant types, ограничивает размер/частоту запросов, не логирует тела/коды/токены и не сохраняет их. Он получает актуальный token endpoint из официального Mail OpenID discovery, добавляет HTTP Basic `client_id:client_secret`, делает HTTPS POST и возвращает только `{ "access_token": "…", "refresh_token": "…", "expires_in": 3600 }`. При ошибке он сохраняет upstream HTTP 4xx/5xx и возвращает только стандартные безопасные поля `{ "error": "…", "error_description": "…" }`. Секрет хранится в серверном secret manager. Все ответы содержат `Cache-Control: no-store`. Broker не должен быть произвольным HTTP-прокси. Для Яндекса аналогичный endpoint обращается к официальному `/token`, добавляя credentials приложения; при PKCE сохраняет `code_verifier` в запросе.
 
 Broker получает токены по необходимости обмена. Его эксплуатация и доверие к владельцу — обязательное условие этого варианта. Для полностью локальной установки используйте Яндекс PKCE с повторным входом или пароль приложения.
 

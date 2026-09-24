@@ -148,7 +148,10 @@ fn endpoints(provider: &str) -> Result<Endpoints> {
         .map_err(|_| "Не удалось получить настройки OAuth Mail. Проверьте сеть")?;
     for raw in [&e.authorization_endpoint, &e.token_endpoint] {
         let u = https(raw)?;
-        if !matches!(u.host_str(), Some("oauth.mail.ru" | "account.mail.ru")) {
+        if !matches!(
+            u.host_str(),
+            Some("o2.mail.ru" | "oauth.mail.ru" | "account.mail.ru")
+        ) {
             return Err("Адрес OAuth Mail изменился. Требуется обновление приложения".into());
         }
     }
