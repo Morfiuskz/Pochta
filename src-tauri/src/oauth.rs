@@ -21,6 +21,8 @@ pub fn init(path: PathBuf) {
 #[serde(rename_all = "camelCase")]
 struct Config {
     client_id: String,
+    #[serde(default)]
+    client_secret: Option<String>,
     redirect_uri: String,
     #[serde(default)]
     broker_url: Option<String>,
@@ -42,6 +44,13 @@ fn config(provider: &str) -> Result<Config> {
     let c = configs.get(provider).cloned().ok_or("Вход через провайдера ещё не настроен владельцем приложения. Используйте пароль приложения или настройте oauth.json по инструкции в docs/OAUTH.md.")?;
     if c.client_id.trim().is_empty() {
         return Err("Не задан OAuth Client ID. См. docs/OAUTH.md".into());
+    }
+    if provider == "google"
+        && c.client_secret
+            .as_deref()
+            .is_none_or(|secret| secret.trim().is_empty())
+    {
+        return Err("Для Google OAuth в этой конфигурации требуется Client Secret.".into());
     }
     let u = Url::parse(&c.redirect_uri).map_err(|_| "Некорректный OAuth Redirect URI")?;
     if u.scheme() != "http"
@@ -171,9 +180,18 @@ struct OAuthErrorResponse {
 fn exchange(provider: &str, c: &Config, fields: &[(&str, &str)], email: &str) -> Result<Token> {
     let e = endpoints(provider)?;
     let url = c.broker_url.as_deref().unwrap_or(&e.token_endpoint);
+    let mut request_fields = fields.to_vec();
+    if provider == "google" {
+        let secret = c
+            .client_secret
+            .as_deref()
+            .filter(|secret| !secret.trim().is_empty())
+            .ok_or("Для Google OAuth в этой конфигурации требуется Client Secret.")?;
+        request_fields.push(("client_secret", secret));
+    }
     let response = client()?
         .post(url)
-        .form(fields)
+        .form(&request_fields)
         .send()
         .map_err(|_| "Провайдер не выдал OAuth-токен. Проверьте сеть и повторите вход.")?;
     if !response.status().is_success() {
@@ -206,7 +224,7 @@ fn exchange(provider: &str, c: &Config, fields: &[(&str, &str)], email: &str) ->
             .filter(|c| !c.is_control())
             .take(300)
             .collect();
-        for (name, value) in fields {
+        for (name, value) in &request_fields {
             if matches!(
                 *name,
                 "code" | "code_verifier" | "access_token" | "refresh_token" | "client_secret"
