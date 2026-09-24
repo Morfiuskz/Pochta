@@ -162,10 +162,73 @@ struct TokenResponse {
     refresh_token: Option<String>,
     expires_in: u64,
 }
+#[derive(Deserialize)]
+struct OAuthErrorResponse {
+    error: String,
+    #[serde(default)]
+    error_description: Option<String>,
+}
 fn exchange(provider: &str, c: &Config, fields: &[(&str, &str)], email: &str) -> Result<Token> {
     let e = endpoints(provider)?;
     let url = c.broker_url.as_deref().unwrap_or(&e.token_endpoint);
-    let t: TokenResponse = client()?.post(url).form(fields).send().and_then(|r| r.error_for_status()).and_then(|r| r.json()).map_err(|_| "Провайдер не выдал OAuth-токен. Проверьте регистрацию приложения и права доступа; повторите вход.")?;
+    let response = client()?
+        .post(url)
+        .form(fields)
+        .send()
+        .map_err(|_| "Провайдер не выдал OAuth-токен. Проверьте сеть и повторите вход.")?;
+    if !response.status().is_success() {
+        let mut body = Vec::new();
+        response
+            .take(16385)
+            .read_to_end(&mut body)
+            .map_err(|_| "Провайдер отклонил OAuth token exchange")?;
+        if body.len() > 16384 {
+            return Err("Провайдер отклонил OAuth token exchange".into());
+        }
+        let oauth: OAuthErrorResponse = serde_json::from_slice(&body)
+            .map_err(|_| "Провайдер отклонил OAuth token exchange")?;
+        let error: String = oauth
+            .error
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+            .take(64)
+            .collect();
+        let label = match provider {
+            "google" => "Google",
+            "yandex" => "Яндекс",
+            "mail" => "Mail",
+            _ => "Провайдер",
+        };
+        let mut description: String = oauth
+            .error_description
+            .unwrap_or_default()
+            .chars()
+            .filter(|c| !c.is_control())
+            .take(300)
+            .collect();
+        for (name, value) in fields {
+            if matches!(
+                *name,
+                "code" | "code_verifier" | "access_token" | "refresh_token" | "client_secret"
+            ) && !value.is_empty()
+            {
+                description = description.replace(value, "[скрыто]");
+            }
+        }
+        let error = if error.is_empty() {
+            "token_exchange_failed"
+        } else {
+            &error
+        };
+        return if description.trim().is_empty() {
+            Err(format!("{label} OAuth: {error}"))
+        } else {
+            Err(format!("{label} OAuth: {error} — {}", description.trim()))
+        };
+    }
+    let t: TokenResponse = response.json().map_err(|_| {
+        "Провайдер не выдал OAuth-токен. Проверьте регистрацию приложения и права доступа; повторите вход."
+    })?;
     if t.access_token.is_empty()
         || t.access_token.len() > 16384
         || t.access_token.chars().any(char::is_control)
