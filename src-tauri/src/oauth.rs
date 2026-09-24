@@ -197,9 +197,21 @@ fn random() -> String {
         uuid::Uuid::new_v4().simple()
     )
 }
+fn callback_url(target: &str) -> Result<Url> {
+    let u = if target.starts_with('/') {
+        Url::parse("http://127.0.0.1")
+            .and_then(|base| base.join(target))
+            .map_err(|_| "Некорректный OAuth ответ")?
+    } else {
+        Url::parse(target).map_err(|_| "Некорректный OAuth ответ")?
+    };
+    if u.path() != "/oauth/callback" {
+        return Err("Некорректный OAuth callback".into());
+    }
+    Ok(u)
+}
 fn callback_code(target: &str, state: &str) -> Result<String> {
-    let u =
-        Url::parse(&format!("http://127.0.0.1{target}")).map_err(|_| "Некорректный OAuth ответ")?;
+    let u = callback_url(target)?;
     let values: Vec<_> = u.query_pairs().collect();
     let one = |key: &str| {
         let v: Vec<_> = values.iter().filter(|(k, _)| k == key).collect();
@@ -209,7 +221,7 @@ fn callback_code(target: &str, state: &str) -> Result<String> {
             None
         }
     };
-    if u.path() != "/oauth/callback" || one("state").as_deref() != Some(state) {
+    if one("state").as_deref() != Some(state) {
         return Err("OAuth: ответ не относится к текущему входу".into());
     }
     if let Some(error) = one("error") {
@@ -294,15 +306,7 @@ pub fn authorize(provider: &str, email: &str) -> Result<Token> {
         let mut parts = request.lines().next().unwrap_or("").split_whitespace();
         let method = parts.next();
         let target = parts.next().unwrap_or("");
-        let expected_host = format!("127.0.0.1:{}", redirect.port().unwrap());
-        let valid_host =
-            request
-                .lines()
-                .filter_map(|line| line.split_once(':'))
-                .any(|(name, value)| {
-                    name.eq_ignore_ascii_case("host") && value.trim() == expected_host
-                });
-        if !valid_host || method != Some("GET") || !target.starts_with("/oauth/callback?") {
+        if method != Some("GET") || callback_url(target).is_err() {
             let _ = stream.write_all(
                 b"HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
             );
@@ -310,8 +314,7 @@ pub fn authorize(provider: &str, email: &str) -> Result<Token> {
         }
         let code = callback_code(target, &state);
         let body = match &code {
-            Ok(_) => "Вход подтверждён. Вернитесь в приложение «Почта» для проверки подключения."
-                .to_string(),
+            Ok(_) => "Вход подтверждён. Вернитесь в приложение «Почта».".to_string(),
             Err(error) => format!("Вход не выполнен: {error}. Вернитесь в приложение «Почта»."),
         };
         let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}", body.len());
@@ -424,6 +427,17 @@ mod tests {
                 b"dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
             )),
             "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+    }
+    #[test]
+    fn google_callback_accepts_issuer_and_absolute_target() {
+        assert_eq!(
+            callback_code(
+                "http://127.0.0.1:43823/oauth/callback?state=abc&iss=https%3A%2F%2Faccounts.google.com&code=google-code",
+                "abc"
+            )
+            .unwrap(),
+            "google-code"
         );
     }
 }
