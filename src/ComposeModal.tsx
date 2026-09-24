@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Paperclip, Send, Trash2, X, LoaderCircle } from "lucide-react";
 import { Modal } from "./Modal";
+import CustomDropdown from "./CustomDropdown";
 import { api, errorText } from "./api";
 import type { Account, Compose, Attachment } from "./types";
 function hasContent(draft: Compose) {
@@ -139,22 +140,21 @@ export default function ComposeModal({
         }}
       >
         <fieldset disabled={busy}>
-          <label className="compose-row">
+          <div className="compose-row">
             <span>От кого</span>
-            <select
-              required
+            <CustomDropdown
+              className="sender-dropdown"
+              ariaLabel="Аккаунт отправителя"
               value={draft.accountId}
-              onChange={(e) => change("accountId", e.target.value)}
-            >
-              {accounts
+              onChange={(accountId) => change("accountId", accountId)}
+              options={accounts
                 .filter((a) => a.enabled)
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} &lt;{a.email}&gt;
-                  </option>
-                ))}
-            </select>
-          </label>
+                .map((a) => ({
+                  value: a.id,
+                  label: `${a.name} <${a.email}>`,
+                }))}
+            />
+          </div>
           <label className="compose-row">
             <span>Кому</span>
             <input

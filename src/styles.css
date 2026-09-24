@@ -545,10 +545,10 @@ main {
   gap: 6px;
   margin-left: auto;
 }
-.sort-dropdown {
+.custom-dropdown {
   position: relative;
 }
-.sort-control {
+.dropdown-trigger {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -559,31 +559,33 @@ main {
   border-radius: 7px;
   padding: 6px 7px;
 }
-.sort-control:hover,
-.sort-control.open {
+.dropdown-trigger:hover,
+.dropdown-trigger.open {
   color: #a9a3f1;
   border-color: #4b496b;
   background: #252837;
   filter: none;
 }
-.sort-label {
+.dropdown-label {
   width: 104px;
   min-width: 0;
   text-align: left;
   color: #a7aec2;
   font-size: 9px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.sort-control > svg {
+.dropdown-trigger > svg {
   flex-shrink: 0;
 }
-.sort-chevron {
+.dropdown-chevron {
   transition: transform 0.15s ease;
 }
-.sort-control.open .sort-chevron {
+.dropdown-trigger.open .dropdown-chevron {
   transform: rotate(180deg);
 }
-.sort-menu {
+.dropdown-menu {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
@@ -595,7 +597,7 @@ main {
   background: #1e212e;
   box-shadow: 0 12px 30px #070812aa;
 }
-.sort-option {
+.dropdown-option {
   width: 100%;
   min-height: 31px;
   display: flex;
@@ -608,18 +610,46 @@ main {
   font-size: 10px;
   text-align: left;
 }
-.sort-option:hover,
-.sort-option.active {
+.dropdown-option:hover,
+.dropdown-option.active {
   color: #dedcf5;
   background: #353252;
   filter: none;
 }
-.sort-option.selected {
+.dropdown-option.selected {
   color: #b4acf8;
 }
-.sort-option svg {
+.dropdown-option svg {
   color: #968cf0;
   flex-shrink: 0;
+}
+.dropdown-option span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sender-dropdown {
+  flex: 1;
+  min-width: 0;
+  margin: 5px 0;
+}
+.sender-dropdown .dropdown-trigger {
+  width: 100%;
+  padding: 9px 11px;
+  background: #171b29;
+  border-color: #353a51;
+  font-size: 11px;
+}
+.sender-dropdown .dropdown-label {
+  width: auto;
+  flex: 1;
+  color: #c1c6d6;
+}
+.sender-dropdown .dropdown-menu {
+  left: 0;
+  right: 0;
+  width: auto;
 }
 .account-filter {
   display: flex;
