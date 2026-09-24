@@ -340,6 +340,16 @@ small {
 .sidebar-bottom small span {
   color: #626d86;
 }
+.author-link {
+  color: #626d86;
+  font: inherit;
+  padding: 0;
+}
+.author-link:hover {
+  color: #929bb5;
+  text-decoration: underline;
+  filter: none;
+}
 .menu-backdrop {
   position: fixed;
   inset: 0;
@@ -495,6 +505,36 @@ main {
   border: 1px solid #34384b;
   padding: 3px 7px;
   border-radius: 6px;
+}
+.list-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sort-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: #858da6;
+  border: 1px solid #303445;
+  background: #202330;
+  border-radius: 7px;
+  padding: 6px 7px;
+}
+.sort-control select {
+  appearance: none;
+  width: 104px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: #a7aec2;
+  background: transparent;
+  box-shadow: none;
+  font-size: 9px;
+}
+.sort-control > svg {
+  flex-shrink: 0;
 }
 .account-filter {
   display: flex;

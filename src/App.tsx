@@ -3,6 +3,7 @@ import { Channel } from "@tauri-apps/api/core";
 import {
   Archive,
   ArrowDownToLine,
+  ArrowUpDown,
   ArrowUpRight,
   Check,
   ChevronDown,
@@ -48,6 +49,13 @@ interface SyncProgress {
   loaded: number;
   total: number | null;
 }
+type MessageSort = "newest" | "oldest" | "sender-asc" | "sender-desc";
+const senderCollator = new Intl.Collator(["ru", "en"], {
+  sensitivity: "base",
+  numeric: true,
+});
+const senderLabel = (message: Summary) =>
+  (message.sender.trim() || message.senderEmail.trim()).normalize("NFKC");
 const dateLabel = (n: number) =>
   new Date(n * 1000).toLocaleDateString("ru-RU", {
     day: "numeric",
@@ -67,6 +75,7 @@ export default function App() {
   const [accountId, setAccountId] = useState("");
   const [folder, setFolder] = useState("all");
   const [filter, setFilter] = useState("all");
+  const [messageSort, setMessageSort] = useState<MessageSort>("newest");
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Message | null>(null);
@@ -340,7 +349,19 @@ export default function App() {
       (filter !== "attachments" || d.attachments.length > 0) &&
       filter !== "unread",
   );
-  const index = messages.findIndex((m) => m.id === selectedId);
+  const sortedMessages = useMemo(() => {
+    const sorted = [...messages];
+    sorted.sort((a, b) => {
+      if (messageSort === "newest") return b.date - a.date;
+      if (messageSort === "oldest") return a.date - b.date;
+      const bySender = senderCollator.compare(senderLabel(a), senderLabel(b));
+      if (bySender !== 0)
+        return messageSort === "sender-asc" ? bySender : -bySender;
+      return b.date - a.date;
+    });
+    return sorted;
+  }, [messages, messageSort]);
+  const index = sortedMessages.findIndex((m) => m.id === selectedId);
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -502,7 +523,17 @@ export default function App() {
           <span>
             Только на вашем устройстве
             <small>
-              Почта <span>v0.1.0</span>
+              <button
+                className="author-link"
+                onClick={() =>
+                  void api("open_author_site").catch((error) =>
+                    notify(errorText(error), true),
+                  )
+                }
+              >
+                Morfius
+              </button>
+              <span>v0.1.0</span>
             </small>
           </span>
         </div>
@@ -567,16 +598,34 @@ export default function App() {
                   </span>
                 </h1>
               </div>
-              <button
-                className="icon-button"
-                title="Обновить"
-                disabled={syncing || !accounts.some((a) => a.enabled)}
-                onClick={() =>
-                  void sync(activeAccount ? [activeAccount] : accounts)
-                }
-              >
-                <RefreshCw size={17} className={syncing ? "spin" : ""} />
-              </button>
+              <div className="list-heading-actions">
+                <label className="sort-control" title="Сортировка писем">
+                  <ArrowUpDown size={13} />
+                  <select
+                    aria-label="Сортировка писем"
+                    value={messageSort}
+                    onChange={(event) =>
+                      setMessageSort(event.target.value as MessageSort)
+                    }
+                  >
+                    <option value="newest">Новые сначала</option>
+                    <option value="oldest">Старые сначала</option>
+                    <option value="sender-asc">Отправитель A–Z</option>
+                    <option value="sender-desc">Отправитель Z–A</option>
+                  </select>
+                  <ChevronDown size={12} />
+                </label>
+                <button
+                  className="icon-button"
+                  title="Обновить"
+                  disabled={syncing || !accounts.some((a) => a.enabled)}
+                  onClick={() =>
+                    void sync(activeAccount ? [activeAccount] : accounts)
+                  }
+                >
+                  <RefreshCw size={17} className={syncing ? "spin" : ""} />
+                </button>
+              </div>
             </div>
             <div className="account-filter">
               <span className="tiny-dot" />
@@ -631,7 +680,7 @@ export default function App() {
                     <span className="account-tag">Локальный черновик</span>
                   </button>
                 ))}
-              {messages.map((m) => (
+              {sortedMessages.map((m) => (
                 <button
                   className={`message-card ${m.id === selectedId ? "selected" : ""} ${!m.read ? "unread" : ""}`}
                   key={m.id}
@@ -783,15 +832,15 @@ export default function App() {
                     className="icon-button"
                     title="Предыдущее письмо"
                     disabled={index <= 0}
-                    onClick={() => void choose(messages[index - 1])}
+                    onClick={() => void choose(sortedMessages[index - 1])}
                   >
                     <ChevronLeft size={17} />
                   </button>
                   <button
                     className="icon-button"
                     title="Следующее письмо"
-                    disabled={index < 0 || index >= messages.length - 1}
-                    onClick={() => void choose(messages[index + 1])}
+                    disabled={index < 0 || index >= sortedMessages.length - 1}
+                    onClick={() => void choose(sortedMessages[index + 1])}
                   >
                     <ChevronRight size={17} />
                   </button>

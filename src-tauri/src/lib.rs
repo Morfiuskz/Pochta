@@ -40,6 +40,11 @@ fn oauth_status(provider: String) -> oauth::Availability {
     oauth::availability(&provider)
 }
 #[tauri::command]
+fn open_author_site() -> Result<()> {
+    webbrowser::open("https://morfius.ru")
+        .map_err(|_| "Не удалось открыть сайт Morfius".to_string())
+}
+#[tauri::command]
 async fn connect_oauth(
     state: tauri::State<'_, State>,
     mut account: Account,
@@ -443,6 +448,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             discover_provider,
             oauth_status,
+            open_author_site,
             connect_oauth,
             list_accounts,
             list_messages,
