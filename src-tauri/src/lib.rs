@@ -65,8 +65,18 @@ async fn connect_oauth(
                 return Err("Для другого email добавьте новый аккаунт".into());
             }
         }
-        mail::run(&account, oauth::access(&token), mail::Job::Test)?;
-        mail::test_smtp(&account, oauth::access(&token))?;
+        mail::run(&account, oauth::access(&token), mail::Job::Test).map_err(|_| {
+            format!(
+                "Не удалось подтвердить OAuth-доступ к {} по IMAP. Убедитесь, что в браузере выбран этот же аккаунт и разрешён доступ к почте",
+                account.email
+            )
+        })?;
+        mail::test_smtp(&account, oauth::access(&token)).map_err(|_| {
+            format!(
+                "Не удалось подтвердить OAuth-доступ к {} по SMTP. Убедитесь, что в браузере выбран этот же аккаунт и разрешена отправка почты",
+                account.email
+            )
+        })?;
         if account.name.trim().is_empty() {
             account.name = account.email.clone();
         }

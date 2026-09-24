@@ -95,8 +95,9 @@ fn login_run<T: Read + Write>(
                     token: p,
                 },
             )
-            .map_err(|_| {
-                "IMAP: OAuth-доступ отклонён. Повторите вход и разрешите доступ к почте".to_string()
+            .map_err(|_| match &a.auth {
+                AuthMethod::Oauth { provider } => crate::oauth::reauth_message(provider),
+                AuthMethod::Password => unreachable!(),
             })?
     } else {
         client.login(&a.imap.login, p).map_err(|_| "Неверный пароль или пароль приложения. Проверьте логин и разрешение IMAP; провайдер может требовать OAuth".to_string())?
@@ -468,9 +469,14 @@ pub(super) fn smtp(a: &Account, p: &str) -> Result<SmtpTransport> {
 pub fn test_smtp(a: &Account, p: &str) -> Result<()> {
     if smtp(a, p)?.test_connection().map_err(|e| {
         if e.is_permanent() {
-            "SMTP авторизация отклонена. Проверьте пароль приложения или повторите OAuth-вход"
+            match &a.auth {
+                AuthMethod::Oauth { provider } => crate::oauth::reauth_message(provider),
+                AuthMethod::Password => {
+                    "SMTP авторизация отклонена. Проверьте пароль приложения".into()
+                }
+            }
         } else {
-            "Не удалось подключиться к SMTP. Проверьте сеть, сервер и TLS"
+            "Не удалось подключиться к SMTP. Проверьте сеть, сервер и TLS".into()
         }
     })? {
         Ok(())

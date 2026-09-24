@@ -67,10 +67,11 @@ export const providers: Provider[] = [
   ),
   provider(
     "google",
-    "Gmail",
+    "Google",
     ["gmail.com", "googlemail.com"],
     "imap.gmail.com",
     "smtp.gmail.com",
+    true,
   ),
   provider(
     "microsoft",
@@ -111,6 +112,13 @@ export function applyProvider(a: Account, p: Provider): Account {
 }
 export function passwordAvailable(p?: Provider) {
   return !p || p.authMethods.includes("password");
+}
+export function detectProviderFromServers(discovered: Discovered) {
+  return providers.find(
+    (p) =>
+      p.imap.host === discovered.imap.host.toLowerCase() &&
+      p.smtp.host === discovered.smtp.host.toLowerCase(),
+  );
 }
 export interface Discovered {
   imap: Server;

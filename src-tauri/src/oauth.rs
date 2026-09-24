@@ -31,7 +31,7 @@ pub struct Availability {
     pub message: String,
 }
 fn config(provider: &str) -> Result<Config> {
-    if !matches!(provider, "yandex" | "mail") {
+    if !matches!(provider, "yandex" | "google" | "mail") {
         return Err("OAuth этого провайдера пока не реализован".into());
     }
     let configs: HashMap<String, Config> = CONFIG_PATH
@@ -57,8 +57,23 @@ fn config(provider: &str) -> Result<Config> {
             "OAuth Redirect URI должен иметь вид http://127.0.0.1:PORT/oauth/callback".into(),
         );
     }
+    if provider == "google" && c.broker_url.is_some() {
+        return Err("Google OAuth использует только официальный token endpoint".into());
+    }
     if let Some(broker) = &c.broker_url {
         https(broker)?;
+    }
+    let expected_redirect = match provider {
+        "yandex" => Some("http://127.0.0.1:43821/oauth/callback"),
+        "google" => Some("http://127.0.0.1:43823/oauth/callback"),
+        _ => None,
+    };
+    if let Some(expected) = expected_redirect {
+        if c.redirect_uri != expected {
+            return Err(format!(
+                "Для {provider} используйте Redirect URI {expected}"
+            ));
+        }
     }
     if provider == "mail" {
         https(c.broker_url.as_deref().ok_or("Для Mail требуется HTTPS-сервис обмена токенов владельца приложения. См. docs/OAUTH.md")?)?;
@@ -110,6 +125,12 @@ fn endpoints(provider: &str) -> Result<Endpoints> {
             token_endpoint: "https://oauth.yandex.ru/token".into(),
         });
     }
+    if provider == "google" {
+        return Ok(Endpoints {
+            authorization_endpoint: "https://accounts.google.com/o/oauth2/v2/auth".into(),
+            token_endpoint: "https://oauth2.googleapis.com/token".into(),
+        });
+    }
     let e: Endpoints = client()?
         .get("https://account.mail.ru/.well-known/openid-configuration")
         .send()
@@ -148,6 +169,11 @@ fn exchange(provider: &str, c: &Config, fields: &[(&str, &str)], email: &str) ->
     if t.access_token.is_empty()
         || t.access_token.len() > 16384
         || t.access_token.chars().any(char::is_control)
+        || t.refresh_token.as_ref().is_some_and(|refresh| {
+            refresh.is_empty()
+                || refresh.len() > 16384
+                || refresh.chars().any(char::is_control)
+        })
         || t.expires_in == 0
     {
         return Err("Провайдер вернул некорректный OAuth-токен".into());
@@ -215,10 +241,10 @@ pub fn authorize(provider: &str, email: &str) -> Result<Token> {
         ("code_challenge_method", "S256"),
         (
             "scope",
-            if provider == "yandex" {
-                "mail:imap_full mail:smtp"
-            } else {
-                "openid mail.imap offline_access"
+            match provider {
+                "yandex" => "mail:imap_full,mail:smtp",
+                "google" => "https://mail.google.com/",
+                _ => "openid mail.imap offline_access",
             },
         ),
     ]);
@@ -226,6 +252,11 @@ pub fn authorize(provider: &str, email: &str) -> Result<Token> {
         url.query_pairs_mut()
             .append_pair("login_hint", email)
             .append_pair("force_confirm", "yes");
+    } else if provider == "google" {
+        url.query_pairs_mut()
+            .append_pair("login_hint", email)
+            .append_pair("access_type", "offline")
+            .append_pair("prompt", "consent");
     } else {
         url.query_pairs_mut().append_pair("prompt", "consent");
     }
@@ -317,15 +348,12 @@ pub fn credential(a: &Account, kind: &str) -> Result<String> {
             return Err("OAuth-приложение изменилось. Повторите вход".into());
         }
         if provider == "yandex" && c.broker_url.is_none() {
-            return Err(
-                "Срок OAuth-доступа истёк. Откройте подключение и снова войдите через Яндекс"
-                    .into(),
-            );
+            return Err(reauth_message(provider));
         }
         let refresh = t
             .refresh_token
             .as_deref()
-            .ok_or("Срок доступа истёк. Повторите вход через провайдера")?;
+            .ok_or_else(|| reauth_message(provider))?;
         let mut next = exchange(
             provider,
             &c,
@@ -335,7 +363,8 @@ pub fn credential(a: &Account, kind: &str) -> Result<String> {
                 ("refresh_token", refresh),
             ],
             &a.email,
-        )?;
+        )
+        .map_err(|_| reauth_message(provider))?;
         if next.refresh_token.is_none() {
             next.refresh_token = t.refresh_token.take();
         }
@@ -347,6 +376,7 @@ pub fn credential(a: &Account, kind: &str) -> Result<String> {
 pub fn validate_account(a: &Account, provider: &str) -> Result<()> {
     let (imap, smtp) = match provider {
         "yandex" => ("imap.yandex.com", "smtp.yandex.com"),
+        "google" => ("imap.gmail.com", "smtp.gmail.com"),
         "mail" => ("imap.mail.ru", "smtp.mail.ru"),
         _ => return Err("OAuth этого провайдера пока недоступен".into()),
     };
@@ -363,6 +393,13 @@ pub fn validate_account(a: &Account, provider: &str) -> Result<()> {
         return Err("Для OAuth используйте настройки выбранного провайдера. Изменение серверов требует нового подключения".into());
     }
     Ok(())
+}
+pub fn reauth_message(provider: &str) -> String {
+    match provider {
+        "google" => "Требуется повторный вход в Google".into(),
+        "yandex" => "Войдите в Яндекс снова".into(),
+        _ => "Требуется повторный вход через провайдера".into(),
+    }
 }
 #[cfg(test)]
 mod tests {

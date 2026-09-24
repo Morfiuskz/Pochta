@@ -39,7 +39,7 @@ pub fn discover(email: &str) -> Option<Discovered> {
 }
 fn parse(xml: &str, email: &str) -> Option<Discovered> {
     let doc = roxmltree::Document::parse(xml).ok()?;
-    let server = |tag: &str, kind: &str| -> Option<Server> {
+    let server = |tag: &str, kind: &str| -> Option<(Server, bool, bool)> {
         doc.descendants()
             .filter(|n| n.has_tag_name(tag) && n.attribute("type") == Some(kind))
             .find_map(|n| {
@@ -48,10 +48,13 @@ fn parse(xml: &str, email: &str) -> Option<Discovered> {
                         .find(|c| c.has_tag_name(name))
                         .and_then(|c| c.text())
                 };
-                if !n.children().any(|c| {
-                    c.has_tag_name("authentication")
-                        && matches!(c.text(), Some("password-cleartext"))
-                }) {
+                let password = n.children().any(|c| {
+                    c.has_tag_name("authentication") && c.text() == Some("password-cleartext")
+                });
+                let oauth = n.children().any(|c| {
+                    c.has_tag_name("authentication") && c.text() == Some("OAuth2")
+                });
+                if !password && !oauth {
                     return None;
                 }
                 let security = match field("socketType")? {
@@ -78,17 +81,30 @@ fn parse(xml: &str, email: &str) -> Option<Discovered> {
                 if port == 0 {
                     return None;
                 }
-                Some(Server {
-                    host,
-                    port,
-                    login,
-                    security,
-                })
+                Some((
+                    Server {
+                        host,
+                        port,
+                        login,
+                        security,
+                    },
+                    password,
+                    oauth,
+                ))
             })
     };
+    let (imap, imap_password, imap_oauth) = server("incomingServer", "imap")?;
+    let (smtp, smtp_password, smtp_oauth) = server("outgoingServer", "smtp")?;
+    let google_oauth = imap.host.eq_ignore_ascii_case("imap.gmail.com")
+        && smtp.host.eq_ignore_ascii_case("smtp.gmail.com")
+        && imap_oauth
+        && smtp_oauth;
+    if !(imap_password && smtp_password) && !google_oauth {
+        return None;
+    }
     Some(Discovered {
-        imap: server("incomingServer", "imap")?,
-        smtp: server("outgoingServer", "smtp")?,
+        imap,
+        smtp,
         name: doc
             .descendants()
             .find(|n| n.has_tag_name("displayName"))

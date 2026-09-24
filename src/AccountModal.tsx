@@ -5,6 +5,7 @@ import { api, errorText } from "./api";
 import {
   applyProvider,
   detectProvider,
+  detectProviderFromServers,
   passwordAvailable,
   providers,
   type Provider,
@@ -138,6 +139,12 @@ export default function AccountModal({
           email: a.email.trim(),
         });
         if (result) {
+          const discoveredProvider = detectProviderFromServers(result);
+          if (discoveredProvider?.id === "google") {
+            await choose(discoveredProvider);
+            setSource(`Настройки из Thunderbird ISPDB: ${result.name}`);
+            return;
+          }
           setA((v) => ({
             ...v,
             email: v.email.trim(),
@@ -286,6 +293,7 @@ export default function AccountModal({
                           <option key={p.id} value={p.id}>
                             {p.name}
                             {p.id === "yandex" ? " / Яндекс 360" : ""}
+                            {p.id === "google" ? " / Gmail" : ""}
                           </option>
                         ))}
                       </select>
@@ -303,8 +311,9 @@ export default function AccountModal({
                           className="primary"
                           onClick={() => void oauthLogin()}
                         >
-                          Войти через{" "}
-                          {provider.id === "yandex" ? "Яндекс" : "Mail"}
+                          {account?.auth?.method === "oauth"
+                            ? `Войти в ${provider.name} снова`
+                            : `Войти через ${provider.name}`}
                         </button>
                         <p className="security-note">
                           {oauthInfo ||
