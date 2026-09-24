@@ -545,6 +545,9 @@ main {
   gap: 6px;
   margin-left: auto;
 }
+.sort-dropdown {
+  position: relative;
+}
 .sort-control {
   display: flex;
   align-items: center;
@@ -556,18 +559,66 @@ main {
   border-radius: 7px;
   padding: 6px 7px;
 }
-.sort-control select {
-  appearance: none;
+.sort-control:hover,
+.sort-control.open {
+  color: #a9a3f1;
+  border-color: #4b496b;
+  background: #252837;
+  filter: none;
+}
+.sort-label {
   width: 104px;
   min-width: 0;
-  border: 0;
-  padding: 0;
+  text-align: left;
   color: #a7aec2;
-  background: transparent;
-  box-shadow: none;
   font-size: 9px;
+  white-space: nowrap;
 }
 .sort-control > svg {
+  flex-shrink: 0;
+}
+.sort-chevron {
+  transition: transform 0.15s ease;
+}
+.sort-control.open .sort-chevron {
+  transform: rotate(180deg);
+}
+.sort-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 174px;
+  padding: 5px;
+  border: 1px solid #393d52;
+  border-radius: 8px;
+  background: #1e212e;
+  box-shadow: 0 12px 30px #070812aa;
+}
+.sort-option {
+  width: 100%;
+  min-height: 31px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  color: #9da5ba;
+  font-size: 10px;
+  text-align: left;
+}
+.sort-option:hover,
+.sort-option.active {
+  color: #dedcf5;
+  background: #353252;
+  filter: none;
+}
+.sort-option.selected {
+  color: #b4acf8;
+}
+.sort-option svg {
+  color: #968cf0;
   flex-shrink: 0;
 }
 .account-filter {

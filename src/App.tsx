@@ -50,6 +50,15 @@ interface SyncProgress {
   total: number | null;
 }
 type MessageSort = "newest" | "oldest" | "sender-asc" | "sender-desc";
+const MESSAGE_SORT_OPTIONS: ReadonlyArray<{
+  value: MessageSort;
+  label: string;
+}> = [
+  { value: "newest", label: "Новые сначала" },
+  { value: "oldest", label: "Старые сначала" },
+  { value: "sender-asc", label: "Отправитель A–Z" },
+  { value: "sender-desc", label: "Отправитель Z–A" },
+];
 interface ColumnWidths {
   sidebar: number;
   messageList: number;
@@ -117,6 +126,8 @@ export default function App() {
   const [folder, setFolder] = useState("all");
   const [filter, setFilter] = useState("all");
   const [messageSort, setMessageSort] = useState<MessageSort>("newest");
+  const [sortOpen, setSortOpen] = useState(false);
+  const [activeSortIndex, setActiveSortIndex] = useState(0);
   const [columnWidths, setColumnWidths] =
     useState<ColumnWidths>(storedColumnWidths);
   const [activeResizer, setActiveResizer] = useState<
@@ -146,6 +157,8 @@ export default function App() {
   const [lastSync, setLastSync] = useState("");
   const [images, setImages] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const sortControlRef = useRef<HTMLDivElement>(null);
+  const sortButtonRef = useRef<HTMLButtonElement>(null);
   const syncLock = useRef(false);
   const init = useRef(false);
   const request = useRef(0);
@@ -165,10 +178,65 @@ export default function App() {
     window.addEventListener("resize", fitToWindow);
     return () => window.removeEventListener("resize", fitToWindow);
   }, []);
+  useEffect(() => {
+    if (!sortOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!sortControlRef.current?.contains(event.target as Node)) {
+        setSortOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSortOpen(false);
+        sortButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [sortOpen]);
   const notify = useCallback(
     (text: string, error = false) => setNotice({ text, error }),
     [],
   );
+  const openSort = () => {
+    setActiveSortIndex(
+      MESSAGE_SORT_OPTIONS.findIndex((option) => option.value === messageSort),
+    );
+    setSortOpen(true);
+  };
+  const chooseSort = (value: MessageSort) => {
+    setMessageSort(value);
+    setSortOpen(false);
+    sortButtonRef.current?.focus();
+  };
+  const sortKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!sortOpen) {
+        openSort();
+        return;
+      }
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setActiveSortIndex(
+        (current) =>
+          (current + step + MESSAGE_SORT_OPTIONS.length) %
+          MESSAGE_SORT_OPTIONS.length,
+      );
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (sortOpen) {
+        chooseSort(MESSAGE_SORT_OPTIONS[activeSortIndex].value);
+      } else {
+        openSort();
+      }
+    }
+  };
   const startColumnResize = (
     target: "sidebar" | "message-list",
     event: React.PointerEvent<HTMLDivElement>,
@@ -733,22 +801,58 @@ export default function App() {
                 </h1>
               </div>
               <div className="list-heading-actions">
-                <label className="sort-control" title="Сортировка писем">
-                  <ArrowUpDown size={13} />
-                  <select
+                <div className="sort-dropdown" ref={sortControlRef}>
+                  <button
+                    ref={sortButtonRef}
+                    className={`sort-control ${sortOpen ? "open" : ""}`}
+                    type="button"
                     aria-label="Сортировка писем"
-                    value={messageSort}
-                    onChange={(event) =>
-                      setMessageSort(event.target.value as MessageSort)
-                    }
+                    aria-haspopup="listbox"
+                    aria-expanded={sortOpen}
+                    aria-controls="message-sort-menu"
+                    onClick={() => (sortOpen ? setSortOpen(false) : openSort())}
+                    onKeyDown={sortKeyDown}
                   >
-                    <option value="newest">Новые сначала</option>
-                    <option value="oldest">Старые сначала</option>
-                    <option value="sender-asc">Отправитель A–Z</option>
-                    <option value="sender-desc">Отправитель Z–A</option>
-                  </select>
-                  <ChevronDown size={12} />
-                </label>
+                    <ArrowUpDown size={13} />
+                    <span className="sort-label">
+                      {
+                        MESSAGE_SORT_OPTIONS.find(
+                          (option) => option.value === messageSort,
+                        )?.label
+                      }
+                    </span>
+                    <ChevronDown
+                      className="sort-chevron"
+                      size={12}
+                    />
+                  </button>
+                  {sortOpen && (
+                    <div
+                      className="sort-menu"
+                      id="message-sort-menu"
+                      role="listbox"
+                      aria-label="Варианты сортировки"
+                    >
+                      {MESSAGE_SORT_OPTIONS.map((option, optionIndex) => (
+                        <button
+                          className={`sort-option ${activeSortIndex === optionIndex ? "active" : ""} ${messageSort === option.value ? "selected" : ""}`}
+                          type="button"
+                          role="option"
+                          aria-selected={messageSort === option.value}
+                          tabIndex={-1}
+                          key={option.value}
+                          onMouseEnter={() =>
+                            setActiveSortIndex(optionIndex)
+                          }
+                          onClick={() => chooseSort(option.value)}
+                        >
+                          <span>{option.label}</span>
+                          {messageSort === option.value && <Check size={13} />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button
                   className="icon-button"
                   title="Обновить"
