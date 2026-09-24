@@ -14,9 +14,20 @@ pub struct Server {
     pub login: String,
     pub security: Security,
 }
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "method", rename_all = "lowercase")]
+pub enum AuthMethod {
+    #[default]
+    Password,
+    Oauth {
+        provider: String,
+    },
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {
+    #[serde(default)]
+    pub auth: AuthMethod,
     pub id: String,
     pub name: String,
     pub sender_name: String,
@@ -126,6 +137,9 @@ pub struct Query {
     pub search: String,
 }
 pub fn validate(a: &Account) -> Result<()> {
+    if let AuthMethod::Oauth { provider } = &a.auth {
+        crate::oauth::validate_account(a, provider)?;
+    }
     a.email
         .parse::<lettre::Address>()
         .map_err(|_| "Укажите корректный email".to_string())?;
@@ -149,7 +163,13 @@ mod tests {
     #[test]
     fn config_and_validation() {
         let mut a:Account=serde_json::from_str(r#"{"id":"1","name":"","senderName":"Me","email":"me@example.org","imap":{"host":"imap.example.org","port":993,"login":"me","security":"tls"},"smtp":{"host":"smtp.example.org","port":587,"login":"me","security":"starttls"},"sameCredentials":true,"isDefault":true,"enabled":true}"#).unwrap();
+        assert!(matches!(a.auth, AuthMethod::Password));
         assert!(validate(&a).is_ok());
+        a.auth = AuthMethod::Oauth {
+            provider: "yandex".into(),
+        };
+        assert!(validate(&a).is_err()); // OAuth cannot send tokens to manual hosts.
+        a.auth = AuthMethod::Password;
         a.email = "invalid".into();
         assert!(validate(&a).is_err());
         a.email = "me@example.org".into();

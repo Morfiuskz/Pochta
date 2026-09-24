@@ -10,6 +10,7 @@ use std::{
 };
 fn account(port: u16) -> Account {
     Account {
+        auth: AuthMethod::Password,
         id: "fixture".into(),
         name: "Test".into(),
         sender_name: "Local Test".into(),

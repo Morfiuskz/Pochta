@@ -81,11 +81,3 @@ export function reply(m: Message, accounts: Account[], all = false): Compose {
     references: [m.references, m.messageId].filter(Boolean).join(" "),
   };
 }
-export const presets: Record<string, [string, string]> = {
-  "gmail.com": ["imap.gmail.com", "smtp.gmail.com"],
-  "yandex.ru": ["imap.yandex.ru", "smtp.yandex.ru"],
-  "ya.ru": ["imap.yandex.ru", "smtp.yandex.ru"],
-  "mail.ru": ["imap.mail.ru", "smtp.mail.ru"],
-  "bk.ru": ["imap.mail.ru", "smtp.mail.ru"],
-  "icloud.com": ["imap.mail.me.com", "smtp.mail.me.com"],
-};

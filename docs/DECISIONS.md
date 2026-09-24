@@ -14,3 +14,7 @@
 - Фиксируются package-lock.json и Cargo.lock. Windows NSIS installer собирается в CI без подписи и публикации релиза.
 
 Официальные справочники: [Tauri capabilities](https://v2.tauri.app/security/capabilities/), [IMAP Session](https://docs.rs/imap/2.4.1/imap/struct.Session.html), [lettre SMTP](https://docs.rs/lettre/latest/lettre/transport/smtp/index.html), [keyring](https://docs.rs/keyring/3.6.3/keyring/).
+
+- Пользовательское имя — «Почта»; внутренние package/crate/identifier сохранены для совместимости данных и vault. Логотип-конверт не менялся.
+- Discovery: локальные presets → HTTPS Thunderbird ISPDB → явная ручная форма. Не используем эвристику imap/smtp + домен и не добавляем DNS/discovery framework. Свой домен Яндекс 360 можно связать с preset вручную.
+- OAuth — отдельный метод, не пароль под другим названием. Яндекс: PKCE без встроенного client secret; Mail: официальный confidential exchange через broker владельца. Google/Microsoft только подготовлены в модели. POP3 отключён с пометкой «позже». См. [настройку и официальные источники](OAUTH.md).

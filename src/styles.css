@@ -1378,3 +1378,27 @@ svg.starred {
   border-top: 1px solid #30364a;
   z-index: 1;
 }
+
+.modal.compact {
+  width: min(460px, calc(100vw - 40px));
+}
+.onboarding-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.onboarding-fields p {
+  margin: 0;
+  line-height: 1.6;
+}
+.onboarding-fields details {
+  color: #a5aac0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.onboarding-fields summary {
+  cursor: pointer;
+}
+.onboarding-fields .security-note {
+  line-height: 1.6;
+}

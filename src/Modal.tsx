@@ -5,12 +5,14 @@ export function Modal({
   onClose,
   children,
   wide = false,
+  compact = false,
   busy = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  compact?: boolean;
   busy?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -63,11 +65,11 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`modal ${wide ? "wide" : ""}`}
+        className={`modal ${wide ? "wide" : ""} ${compact ? "compact" : ""}`}
       >
         <header>
           <div>
-            <span className="eyebrow">MORFIUS MAIL</span>
+            <span className="eyebrow">ПОЧТА</span>
             <h2>{title}</h2>
           </div>
           <button

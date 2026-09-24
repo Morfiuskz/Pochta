@@ -1,8 +1,8 @@
-use crate::{db, model::*, secrets};
+use crate::{db, model::*};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use lettre::{
     message::{header::ContentType, Attachment as MailAttachment, Mailbox, MultiPart, SinglePart},
-    transport::smtp::authentication::Credentials,
+    transport::smtp::authentication::{Credentials, Mechanism},
     SmtpTransport, Transport,
 };
 use mailparse::{MailHeaderMap, ParsedMail};
@@ -67,15 +67,40 @@ pub fn run(a: &Account, password: &str, job: Job) -> Result<String> {
         }
     }
 }
+struct Xoauth<'a> {
+    login: &'a str,
+    token: &'a str,
+}
+impl imap::Authenticator for Xoauth<'_> {
+    type Response = String;
+    fn process(&self, challenge: &[u8]) -> String {
+        if !challenge.is_empty() {
+            return String::new();
+        }
+        format!("user={}\x01auth=Bearer {}\x01\x01", self.login, self.token)
+    }
+}
 fn login_run<T: Read + Write>(
     client: imap::Client<T>,
     a: &Account,
     p: &str,
     job: Job,
 ) -> Result<String> {
-    let mut s = client.login(&a.imap.login, p).map_err(|_| {
-        "IMAP: вход отклонён. Проверьте логин, пароль приложения и разрешение IMAP".to_string()
-    })?;
+    let mut s = if matches!(a.auth, AuthMethod::Oauth { .. }) {
+        client
+            .authenticate(
+                "XOAUTH2",
+                &Xoauth {
+                    login: &a.imap.login,
+                    token: p,
+                },
+            )
+            .map_err(|_| {
+                "IMAP: OAuth-доступ отклонён. Повторите вход и разрешите доступ к почте".to_string()
+            })?
+    } else {
+        client.login(&a.imap.login, p).map_err(|_| "Неверный пароль или пароль приложения. Проверьте логин и разрешение IMAP; провайдер может требовать OAuth".to_string())?
+    };
     let result = execute(&mut s, a, job);
     let _ = s.logout();
     result
@@ -430,16 +455,24 @@ pub(super) fn smtp(a: &Account, p: &str) -> Result<SmtpTransport> {
     } else {
         &a.smtp.login
     };
+    let b = if matches!(a.auth, AuthMethod::Oauth { .. }) {
+        b.authentication(vec![Mechanism::Xoauth2])
+    } else {
+        b
+    };
     Ok(b.port(a.smtp.port)
         .timeout(Some(TIMEOUT))
         .credentials(Credentials::new(login.clone(), p.into()))
         .build())
 }
 pub fn test_smtp(a: &Account, p: &str) -> Result<()> {
-    if smtp(a, p)?
-        .test_connection()
-        .map_err(|_| "SMTP: не удалось подключиться. Проверьте сеть, TLS и пароль приложения")?
-    {
+    if smtp(a, p)?.test_connection().map_err(|e| {
+        if e.is_permanent() {
+            "SMTP авторизация отклонена. Проверьте пароль приложения или повторите OAuth-вход"
+        } else {
+            "Не удалось подключиться к SMTP. Проверьте сеть, сервер и TLS"
+        }
+    })? {
         Ok(())
     } else {
         Err("SMTP: сервер отклонил подключение".into())
@@ -509,12 +542,12 @@ pub(super) fn build_message(a: &Account, d: &Compose) -> Result<lettre::Message>
 }
 pub fn send(a: &Account, d: &Compose) -> Result<String> {
     let message = build_message(a, d)?;
-    let p = secrets::get(&a.id, if a.same_credentials { "imap" } else { "smtp" })?;
+    let p = crate::oauth::credential(a, if a.same_credentials { "imap" } else { "smtp" })?;
     smtp(a,&p)?.send(&message).map_err(|_|"SMTP: отправка не подтверждена. Проверьте папку «Отправленные» перед повтором; затем сеть, пароль и получателей")?;
     // Providers such as Gmail already file SMTP messages in Sent.
     if a.smtp.host.to_lowercase() != "smtp.gmail.com" {
-        let saved =
-            secrets::get(&a.id, "imap").and_then(|p| run(a, &p, Job::Append(&message.formatted())));
+        let saved = crate::oauth::credential(a, "imap")
+            .and_then(|p| run(a, &p, Job::Append(&message.formatted())));
         if saved.is_err() {
             return Ok("Письмо отправлено. Копию не удалось сохранить в «Отправленные»; не отправляйте письмо повторно.".into());
         }
@@ -524,6 +557,19 @@ pub fn send(a: &Account, d: &Compose) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn xoauth_payload() {
+        use imap::Authenticator;
+        let auth = Xoauth {
+            login: "me@example.test",
+            token: "synthetic-token",
+        };
+        assert_eq!(
+            auth.process(b""),
+            "user=me@example.test\x01auth=Bearer synthetic-token\x01\x01"
+        );
+        assert_eq!(auth.process(b"auth error"), "");
+    }
     #[test]
     fn mapping() {
         assert_eq!(folder_kind("[Gmail]/Sent Mail", "Sent"), "sent");

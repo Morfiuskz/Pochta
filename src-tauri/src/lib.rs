@@ -1,6 +1,8 @@
 mod db;
+mod discovery;
 mod mail;
 mod model;
+mod oauth;
 mod secrets;
 use model::*;
 use std::{
@@ -26,6 +28,64 @@ async fn work<T: Send + 'static>(
     })
     .await
     .map_err(|_| "Операция прервана. Повторите попытку".to_string())?
+}
+#[tauri::command]
+async fn discover_provider(email: String) -> Result<Option<discovery::Discovered>> {
+    tauri::async_runtime::spawn_blocking(move || discovery::discover(&email))
+        .await
+        .map_err(|_| "Не удалось определить настройки".into())
+}
+#[tauri::command]
+fn oauth_status(provider: String) -> oauth::Availability {
+    oauth::availability(&provider)
+}
+#[tauri::command]
+async fn connect_oauth(
+    state: tauri::State<'_, State>,
+    mut account: Account,
+    provider: String,
+) -> Result<Account> {
+    account.auth = AuthMethod::Oauth {
+        provider: provider.clone(),
+    };
+    validate(&account)?;
+    oauth::validate_account(&account, &provider)?;
+    let email = account.email.clone();
+    // Browser wait does not hold the mail operation mutex.
+    let token = tauri::async_runtime::spawn_blocking(move || oauth::authorize(&provider, &email))
+        .await
+        .map_err(|_| "OAuth-вход прерван")??;
+    work(state.inner().clone(), move |path| {
+        let mut c = db::open(path)?;
+        if account.id.is_empty() {
+            account.id = uuid::Uuid::new_v4().to_string();
+        } else {
+            let old = db::account(&c, &account.id)?;
+            if old.email != account.email {
+                return Err("Для другого email добавьте новый аккаунт".into());
+            }
+        }
+        mail::run(&account, oauth::access(&token), mail::Job::Test)?;
+        mail::test_smtp(&account, oauth::access(&token))?;
+        if account.name.trim().is_empty() {
+            account.name = account.email.clone();
+        }
+        if db::accounts(&c)?.is_empty() {
+            account.is_default = true;
+        }
+        let old = secrets::get(&account.id, "oauth").ok();
+        secrets::set(&account.id, "oauth", &oauth::encode(&token)?)?;
+        if let Err(e) = db::save_account(&mut c, &account) {
+            if let Some(old) = old {
+                let _ = secrets::set(&account.id, "oauth", &old);
+            } else {
+                let _ = secrets::delete(&account.id, "oauth");
+            }
+            return Err(e);
+        }
+        Ok(account)
+    })
+    .await
 }
 #[tauri::command]
 fn list_accounts(state: tauri::State<State>) -> Result<Vec<Account>> {
@@ -62,6 +122,13 @@ async fn save_account(state: tauri::State<'_, State>, input: AccountInput) -> Re
         if a.same_credentials {
             a.smtp.login = a.imap.login.clone()
         }
+        if matches!(a.auth, AuthMethod::Oauth { .. }) {
+            let token = oauth::credential(&a, "imap")?;
+            mail::run(&a, &token, mail::Job::Test)?;
+            mail::test_smtp(&a, &token)?;
+            db::save_account(&mut c, &a)?;
+            return Ok(a);
+        }
         let old_imap = secrets::get(&a.id, "imap").ok();
         let old_smtp = secrets::get(&a.id, "smtp").ok();
         if input.password.is_empty() && old_imap.is_none() {
@@ -70,6 +137,20 @@ async fn save_account(state: tauri::State<'_, State>, input: AccountInput) -> Re
         if !a.same_credentials && input.smtp_password.is_empty() && old_smtp.is_none() {
             return Err("Введите пароль SMTP".into());
         }
+        let p = if input.password.is_empty() {
+            old_imap.as_deref().unwrap_or("")
+        } else {
+            &input.password
+        };
+        let sp = if a.same_credentials {
+            p
+        } else if input.smtp_password.is_empty() {
+            old_smtp.as_deref().unwrap_or("")
+        } else {
+            &input.smtp_password
+        };
+        mail::run(&a, p, mail::Job::Test)?;
+        mail::test_smtp(&a, sp)?;
         let result = (|| {
             if !input.password.is_empty() {
                 secrets::set(&a.id, "imap", &input.password)?;
@@ -148,6 +229,7 @@ async fn account_action(
             "delete" => {
                 secrets::delete(&id, "imap")?;
                 secrets::delete(&id, "smtp")?;
+                secrets::delete(&id, "oauth")?;
                 clear_cache(&mut c, &id)?;
                 c.execute(
                     "DELETE FROM drafts WHERE json_extract(data,'$.accountId')=?1",
@@ -169,8 +251,8 @@ async fn test_connection(state: tauri::State<'_, State>, input: AccountInput) ->
     work(state.inner().clone(), move |_| {
         let a = input.account;
         validate(&a)?;
-        let p = if input.password.is_empty() {
-            secrets::get(&a.id, "imap")?
+        let p = if matches!(a.auth, AuthMethod::Oauth { .. }) || input.password.is_empty() {
+            oauth::credential(&a, "imap")?
         } else {
             input.password
         };
@@ -194,7 +276,7 @@ async fn sync_account(state: tauri::State<'_, State>, id: String) -> Result<Stri
         if !a.enabled {
             return Err("Аккаунт отключён".into());
         }
-        mail::run(&a, &secrets::get(&id, "imap")?, mail::Job::Sync(path))
+        mail::run(&a, &oauth::credential(&a, "imap")?, mail::Job::Sync(path))
     })
     .await
 }
@@ -213,7 +295,7 @@ async fn message_action(
         }
         mail::run(
             &a,
-            &secrets::get(&a.id, "imap")?,
+            &oauth::credential(&a, "imap")?,
             mail::Job::Action(path, &id, &action),
         )
     })
@@ -330,6 +412,7 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let path = dir.join("mail.db");
             db::open(&path).map_err(std::io::Error::other)?;
+            oauth::init(dir.join("oauth.json"));
             app.manage(State {
                 path,
                 operations: Arc::new(Mutex::new(())),
@@ -337,6 +420,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            discover_provider,
+            oauth_status,
+            connect_oauth,
             list_accounts,
             list_messages,
             get_message,
@@ -354,7 +440,7 @@ pub fn run() {
             save_attachment
         ])
         .run(tauri::generate_context!())
-        .expect("Не удалось запустить Morfius Mail");
+        .expect("Не удалось запустить Почта");
 }
 
 #[cfg(test)]

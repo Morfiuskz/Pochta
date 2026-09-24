@@ -327,7 +327,7 @@ export default function App() {
             <Mail size={23} />
           </div>
           <div>
-            Morfius <b>Mail</b>
+            <b>Почта</b>
             <span>ВАШЕ ЛИЧНОЕ ПРОСТРАНСТВО</span>
           </div>
         </div>
@@ -480,7 +480,7 @@ export default function App() {
           <span>
             Только на вашем устройстве
             <small>
-              Morfius Mail <span>v0.1.0</span>
+              Почта <span>v0.1.0</span>
             </small>
           </span>
         </div>

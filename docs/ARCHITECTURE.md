@@ -11,4 +11,9 @@ React (`src/`) → типизированные payload Tauri commands (`src-tau
 - HTML: DOMPurify с allowlist, без CSS/ссылок/форм; iframe sandbox без разрешений и собственный CSP. IPC capabilities относятся только к главному локальному окну; native API не передаются в iframe.
 - Сохранение вложения идёт через native save dialog. Путь не принимается от HTML письма.
 
-Никакого облачного backend, телеметрии или удалённых шрифтов. Сеть используется для заданных пользователем почтовых серверов и явно разрешённых изображений.
+Телеметрии и удалённых шрифтов нет. Помимо почтовых серверов и явно разрешённых изображений сеть используется для ISPDB (только домен) и OAuth. Mail OAuth требует отдельного HTTPS broker владельца, поскольку секрет приложения не встраивается в desktop.
+
+- `providers.ts`: presets, точное сопоставление доменов, поддерживаемые auth methods. `discovery.rs`: HTTPS Thunderbird ISPDB с timeout, ограничением ответа и отказом от небезопасной/неподдерживаемой конфигурации.
+- `oauth.rs`: PKCE S256/state, системный браузер, ограниченный loopback callback, токены в vault, refresh через broker. OAuth не передаёт токены через IPC. Серверы XOAUTH2 ограничены конкретным provider.
+- Account.auth с serde default Password сохраняет совместимость старых JSON в SQLite; schema migration не нужна. Identifier, keyring service и пути данных сохранены при переименовании в «Почта».
+- Сохранение соединения проверяет IMAP и SMTP до записи аккаунта; ожидание browser OAuth не блокирует синхронизацию. Настройка и ограничения: [OAUTH.md](OAUTH.md).

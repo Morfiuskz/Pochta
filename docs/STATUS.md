@@ -1,6 +1,27 @@
 # Статус
 
-Дата: 2026-09-24. Реализован MVP. Основной пользовательский сценарий проверен через native UI на изолированных локальных IMAP/SMTP-серверах. Финальная Windows NSIS сборка с текущими исправлениями завершилась успешно.
+Дата: 2026-09-24. Приложение переименовано в «Почта», добавлены onboarding и OAuth-инфраструктура. Реализован MVP. Основной пользовательский сценарий проверен через native UI на изолированных локальных IMAP/SMTP-серверах. Windows NSIS сборка предыдущего MVP успешна; она не содержит описанного ниже нового onboarding. Новые изменения проверяются на macOS.
+
+## Текущее продолжение: onboarding и OAuth
+
+- Пользовательское имя «Почта»: sidebar, modal, HTML/window title, product/installer metadata; конверт и внутренний identifier сохранены.
+- Первый шаг: email и optional display name. Presets Яндекс/Mail/Gmail/Microsoft/iCloud → HTTPS Thunderbird ISPDB → явная ручная форма. Неизвестный домен не превращается в выдуманные imap/smtp хосты. Собственный домен можно связать с Яндекс 360 вручную.
+- Отдельные методы Password/OAuth, backward-compatible serde default для существующих аккаунтов. Сохранение требует успешной проверки IMAP и SMTP.
+- Яндекс: реализованы code + PKCE S256/state, loopback callback, browser login и IMAP/SMTP XOAUTH2; требуется Client ID владельца. Без broker после истечения токена — повторный вход.
+- Mail: клиентский PKCE/OIDC/XOAUTH2 и refresh готовы к подключению HTTPS broker владельца. Сам broker не развёрнут; нужны регистрация приложения, Client ID и server-side Client Secret. Google/Microsoft OAuth пока не реализованы; Outlook не предлагает пароль как замену OAuth.
+- Токены только в системном vault, не IPC/SQLite/log. OAuth-хосты ограничены provider; TLS validation сохранена. Конфигурация и контракт broker: [OAUTH.md](OAUTH.md).
+- Manual IMAP/SMTP, TLS/STARTTLS/None, отдельные credentials SMTP работают; POP3 явно отключён («позже»).
+- В браузере проверены компактная форма, Яндекс, app-password, неизвестный домен и ручной fallback. Исправлено сохранение чужого preset при возврате и смене email.
+
+## Проверка текущих изменений
+
+- TypeScript typecheck, ESLint: успешно.
+- Frontend: 5 тестов, включая domain matching, fallback/auth selection и сохранение display metadata.
+- Rust: 9 тестов, включая discovery parsing/fallback, PKCE/state, XOAUTH2 payload, старый формат аккаунтов и сохранённые loopback IMAP/SMTP проверки.
+- Cargo check, Clippy all-targets с `-D warnings`, rustfmt: успешно. Есть прежнее предупреждение future incompatibility `imap-proto 0.10.2`.
+- Vite production build: успешно. Tauri release `.app`: успешно, `src-tauri/target/release/bundle/macos/Почта.app`. Native запуск, новое имя, onboarding и понятный отказ OAuth без конфигурации проверены.
+- Native ISPDB: настройки GMX загружены; HTTP 404 для Fastmail корректно перевёл в manual fallback. Пароли и реальные аккаунты для этой проверки не использовались.
+- Реальный OAuth не проверен: developer credentials не предоставлены, Mail broker не развёрнут. На Windows ещё нужны установка/обновление после rename, browser callback и Credential Manager для tokens.
 
 ## Реализовано
 
@@ -22,7 +43,7 @@
 - Отключение выбранного аккаунта очищает viewer даже в объединённом inbox.
 - Завершён preset iCloud SMTP: 587/STARTTLS.
 
-## Проверка
+## Проверка предыдущего MVP
 
 - `npm run typecheck`, `npm run lint`, `npm run build`: успешно.
 - Vitest: 3 теста — HTML isolation, opt-in images, Reply All.
@@ -38,4 +59,4 @@
 
 ## Ограничения
 
-200 последних писем на папку за проход; старый кэш сохраняется. Письма >25 МБ пропускаются, поиск до 1000 результатов, отправляемые вложения ≤20 МБ. Custom folders, OAuth2, push, server drafts editing, CID-картинки, активные ссылки и окончательное удаление не входят в MVP. Кэш писем не зашифрован. Windows installer без подписи. `imap-proto 0.10.2` выдаёт предупреждение о совместимости с будущей версией Rust.
+200 последних писем на папку за проход; старый кэш сохраняется. Письма >25 МБ пропускаются, поиск до 1000 результатов, отправляемые вложения ≤20 МБ. Custom folders, OAuth Google/Microsoft, push, server drafts editing, CID-картинки, активные ссылки и окончательное удаление не входят в MVP. Кэш писем не зашифрован. Windows installer без подписи. `imap-proto 0.10.2` выдаёт предупреждение о совместимости с будущей версией Rust.

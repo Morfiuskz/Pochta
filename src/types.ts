@@ -6,6 +6,7 @@ export interface Server {
   security: Security;
 }
 export interface Account {
+  auth?: { method: "password" } | { method: "oauth"; provider: string };
   id: string;
   name: string;
   senderName: string;

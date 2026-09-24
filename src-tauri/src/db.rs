@@ -132,6 +132,7 @@ mod tests {
     fn persistence_search_and_unicode() {
         let mut c = open(Path::new(":memory:")).unwrap();
         let a = Account {
+            auth: AuthMethod::Password,
             id: "a".into(),
             name: "Work".into(),
             sender_name: "".into(),

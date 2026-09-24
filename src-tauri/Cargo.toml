@@ -1,7 +1,7 @@
 [package]
 name = "morfius-mail"
 version = "0.1.0"
-description = "Minimal local IMAP and SMTP mail client"
+description = "Почта — локальный почтовый клиент IMAP и SMTP"
 authors = ["Morfius"]
 edition = "2021"
 
@@ -26,3 +26,7 @@ mailparse = "0.16"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "native-tls"] }
+roxmltree = "0.20"
+sha2 = "0.10"
+webbrowser = "1"
