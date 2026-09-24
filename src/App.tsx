@@ -50,6 +50,47 @@ interface SyncProgress {
   total: number | null;
 }
 type MessageSort = "newest" | "oldest" | "sender-asc" | "sender-desc";
+interface ColumnWidths {
+  sidebar: number;
+  messageList: number;
+}
+const DEFAULT_COLUMN_WIDTHS: ColumnWidths = { sidebar: 246, messageList: 359 };
+const COLUMN_WIDTHS_KEY = "pochta.columnWidths";
+const RESIZERS_WIDTH = 12;
+const availableColumnWidth = () =>
+  Math.max(window.innerWidth, 1040) - RESIZERS_WIDTH;
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+const fitColumnWidths = (widths: ColumnWidths): ColumnWidths => {
+  const available = availableColumnWidth();
+  const sidebar = clamp(widths.sidebar, 190, Math.min(340, available - 680));
+  const messageList = clamp(
+    widths.messageList,
+    300,
+    Math.min(700, available - sidebar - 380),
+  );
+  return { sidebar, messageList };
+};
+const storedColumnWidths = () => {
+  try {
+    const stored = JSON.parse(
+      localStorage.getItem(COLUMN_WIDTHS_KEY) || "null",
+    ) as Partial<ColumnWidths> | null;
+    if (
+      stored &&
+      Number.isFinite(stored.sidebar) &&
+      Number.isFinite(stored.messageList)
+    ) {
+      return fitColumnWidths({
+        sidebar: stored.sidebar as number,
+        messageList: stored.messageList as number,
+      });
+    }
+  } catch {
+    // Ignore damaged local UI preferences.
+  }
+  return fitColumnWidths(DEFAULT_COLUMN_WIDTHS);
+};
 const senderCollator = new Intl.Collator(["ru", "en"], {
   sensitivity: "base",
   numeric: true,
@@ -76,6 +117,11 @@ export default function App() {
   const [folder, setFolder] = useState("all");
   const [filter, setFilter] = useState("all");
   const [messageSort, setMessageSort] = useState<MessageSort>("newest");
+  const [columnWidths, setColumnWidths] =
+    useState<ColumnWidths>(storedColumnWidths);
+  const [activeResizer, setActiveResizer] = useState<
+    "sidebar" | "message-list" | null
+  >(null);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Message | null>(null);
@@ -106,10 +152,69 @@ export default function App() {
   const viewerRequest = useRef(0);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(columnWidths));
+    } catch {
+      // Resizing still works when local preferences are unavailable.
+    }
+  }, [columnWidths]);
+  useEffect(() => {
+    const fitToWindow = () =>
+      setColumnWidths((current) => fitColumnWidths(current));
+    window.addEventListener("resize", fitToWindow);
+    return () => window.removeEventListener("resize", fitToWindow);
+  }, []);
   const notify = useCallback(
     (text: string, error = false) => setNotice({ text, error }),
     [],
   );
+  const startColumnResize = (
+    target: "sidebar" | "message-list",
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidths = columnWidths;
+    setActiveResizer(target);
+    document.body.classList.add("resizing-columns");
+    const move = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const available = availableColumnWidth();
+      setColumnWidths(
+        target === "sidebar"
+          ? {
+              ...startWidths,
+              sidebar: clamp(
+                startWidths.sidebar + delta,
+                190,
+                Math.min(340, available - startWidths.messageList - 380),
+              ),
+            }
+          : {
+              ...startWidths,
+              messageList: clamp(
+                startWidths.messageList + delta,
+                300,
+                Math.min(700, available - startWidths.sidebar - 380),
+              ),
+            },
+      );
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      window.removeEventListener("blur", stop);
+      document.body.classList.remove("resizing-columns");
+      setActiveResizer(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    window.addEventListener("blur", stop);
+  };
   const loadAccounts = useCallback(async () => {
     const a = await api<Account[]>("list_accounts");
     setAccounts(a);
@@ -364,7 +469,7 @@ export default function App() {
   const index = sortedMessages.findIndex((m) => m.id === selectedId);
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className="sidebar" style={{ width: columnWidths.sidebar }}>
         <div className="brand">
           <div className="brand-icon">
             <Mail size={23} />
@@ -456,7 +561,10 @@ export default function App() {
                     aria-label="Закрыть меню"
                     onClick={() => setMenu("")}
                   />
-                  <div className="account-menu">
+                  <div
+                    className="account-menu"
+                    style={{ left: columnWidths.sidebar - 20 }}
+                  >
                     <button
                       disabled={!a.enabled || syncing}
                       onClick={() => {
@@ -538,6 +646,29 @@ export default function App() {
           </span>
         </div>
       </aside>
+      <div
+        className={`column-resizer ${activeResizer === "sidebar" ? "active" : ""}`}
+        role="separator"
+        aria-label="Изменить ширину боковой панели"
+        aria-orientation="vertical"
+        title="Перетащите для изменения ширины · Двойной щелчок — сброс"
+        onPointerDown={(event) => startColumnResize("sidebar", event)}
+        onDoubleClick={() =>
+          setColumnWidths((current) =>
+            ({
+              ...current,
+              sidebar: clamp(
+                DEFAULT_COLUMN_WIDTHS.sidebar,
+                190,
+                Math.min(
+                  340,
+                  availableColumnWidth() - current.messageList - 380,
+                ),
+              ),
+            }),
+          )
+        }
+      />
       <main>
         <header className="topbar">
           <div className="search-box">
@@ -586,7 +717,10 @@ export default function App() {
           </div>
         )}
         <div className="mail-layout">
-          <section className="message-list">
+          <section
+            className="message-list"
+            style={{ width: columnWidths.messageList }}
+          >
             <div className="list-heading">
               <div>
                 <span className="eyebrow">ВАША ПОЧТА, БЕЗ ЛИШНЕГО</span>
@@ -755,6 +889,29 @@ export default function App() {
               )}
             </div>
           </section>
+          <div
+            className={`column-resizer ${activeResizer === "message-list" ? "active" : ""}`}
+            role="separator"
+            aria-label="Изменить ширину списка писем"
+            aria-orientation="vertical"
+            title="Перетащите для изменения ширины · Двойной щелчок — сброс"
+            onPointerDown={(event) => startColumnResize("message-list", event)}
+            onDoubleClick={() =>
+              setColumnWidths((current) =>
+                ({
+                  ...current,
+                  messageList: clamp(
+                    DEFAULT_COLUMN_WIDTHS.messageList,
+                    300,
+                    Math.min(
+                      700,
+                      availableColumnWidth() - current.sidebar - 380,
+                    ),
+                  ),
+                }),
+              )
+            }
+          />
           <section className="viewer">
             {selected ? (
               <>

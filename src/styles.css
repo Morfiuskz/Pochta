@@ -101,7 +101,6 @@ small {
   width: 246px;
   flex-shrink: 0;
   background: #11131c;
-  border-right: 1px solid #252837;
   padding: 30px 17px 20px;
   display: flex;
   flex-direction: column;
@@ -473,13 +472,47 @@ main {
   background: #181b26;
   width: 359px;
   min-width: 300px;
-  border-right: 1px solid #292d3c;
+  flex-shrink: 0;
+}
+.column-resizer {
+  position: relative;
+  width: 6px;
+  flex: 0 0 6px;
+  cursor: col-resize;
+  touch-action: none;
+  background: #151822;
+  z-index: 4;
+}
+.column-resizer::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 2px;
+  width: 1px;
+  background: #2a2e3e;
+  transition:
+    width 0.12s,
+    background 0.12s;
+}
+.column-resizer:hover::after,
+.column-resizer.active::after {
+  width: 2px;
+  background: #8178dc;
+}
+.resizing-columns,
+.resizing-columns * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 .list-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
   padding: 27px 23px 15px;
+}
+.list-heading > div:first-child {
+  min-width: 0;
 }
 .eyebrow {
   font-size: 8px;
@@ -510,6 +543,7 @@ main {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
 }
 .sort-control {
   display: flex;
@@ -731,7 +765,7 @@ svg.starred {
 }
 .viewer {
   flex: 1;
-  min-width: 0;
+  min-width: 380px;
   background: #1b1e2a;
   display: flex;
   flex-direction: column;
@@ -1335,7 +1369,6 @@ svg.starred {
 }
 @media (max-width: 1200px) {
   .sidebar {
-    width: 220px;
     padding-left: 12px;
     padding-right: 12px;
   }
@@ -1346,8 +1379,7 @@ svg.starred {
     font-size: 6px;
   }
   .message-list {
-    width: 315px;
-    min-width: 290px;
+    min-width: 300px;
   }
   .message-content {
     padding: 25px;
@@ -1364,9 +1396,6 @@ svg.starred {
   }
   .sender-block {
     gap: 8px;
-  }
-  .account-menu {
-    left: 205px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

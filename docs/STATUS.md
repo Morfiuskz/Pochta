@@ -27,7 +27,7 @@
 
 ## Реализовано
 
-- Трёхколоночный desktop UI; account modal, меню, default sender, rename и отключение.
+- Трёхколоночный desktop UI с сохраняемыми draggable-разделителями; account modal, меню, default sender, rename и отключение.
 - Список писем локально сортируется по дате или нормализованному имени отправителя; ссылка Morfius в sidebar открывается системным браузером.
 - Реальные Rust IMAP/SMTP команды, TLS/STARTTLS, MIME, вложения, Reply/Reply All.
 - SQLite cache + FTS5; локальные drafts и состояние папки/аккаунта.
