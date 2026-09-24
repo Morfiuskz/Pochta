@@ -212,8 +212,14 @@ fn callback_code(target: &str, state: &str) -> Result<String> {
     if u.path() != "/oauth/callback" || one("state").as_deref() != Some(state) {
         return Err("OAuth: ответ не относится к текущему входу".into());
     }
-    if one("error").is_some() {
-        return Err("Вход отменён или доступ к почте не разрешён".into());
+    if let Some(error) = one("error") {
+        let description = one("error_description").unwrap_or(error);
+        let description: String = description
+            .chars()
+            .filter(|c| !c.is_control())
+            .take(300)
+            .collect();
+        return Err(format!("OAuth: {description}"));
     }
     one("code")
         .filter(|s| !s.is_empty())
@@ -242,7 +248,7 @@ pub fn authorize(provider: &str, email: &str) -> Result<Token> {
         (
             "scope",
             match provider {
-                "yandex" => "mail:imap_full,mail:smtp",
+                "yandex" => "login:email mail:imap_full mail:smtp",
                 "google" => "https://mail.google.com/",
                 _ => "openid mail.imap offline_access",
             },
@@ -303,10 +309,10 @@ pub fn authorize(provider: &str, email: &str) -> Result<Token> {
             continue;
         }
         let code = callback_code(target, &state);
-        let body = if code.is_ok() {
-            "Вход подтверждён. Вернитесь в приложение «Почта» для проверки подключения."
-        } else {
-            "Вход не подтверждён. Вернитесь в приложение «Почта»."
+        let body = match &code {
+            Ok(_) => "Вход подтверждён. Вернитесь в приложение «Почта» для проверки подключения."
+                .to_string(),
+            Err(error) => format!("Вход не выполнен: {error}. Вернитесь в приложение «Почта»."),
         };
         let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}", body.len());
         let _ = stream.write_all(response.as_bytes());
