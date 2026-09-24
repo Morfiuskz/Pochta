@@ -78,7 +78,14 @@ export default function AccountModal({
           ...v.smtp,
           login: value,
           ...(!account && preset
-            ? { host: preset[1], port: 465, security: "tls" as const }
+            ? {
+                host: preset[1],
+                port: preset[1] === "smtp.mail.me.com" ? 587 : 465,
+                security:
+                  preset[1] === "smtp.mail.me.com"
+                    ? ("starttls" as const)
+                    : ("tls" as const),
+              }
             : {}),
         },
       };

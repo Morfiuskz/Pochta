@@ -47,7 +47,7 @@ pub fn save_account(c: &mut Connection, a: &Account) -> Result<()> {
         }
     }
     tx.execute(
-        "INSERT OR REPLACE INTO accounts VALUES(?1,?2)",
+        "INSERT INTO accounts(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
         params![a.id, serde_json::to_string(a).unwrap()],
     )
     .map_err(err)?;
@@ -153,6 +153,21 @@ mod tests {
             enabled: true,
         };
         save_account(&mut c, &a).unwrap();
+        let mut second = a.clone();
+        second.id = "b".into();
+        save_account(&mut c, &second).unwrap();
+        let mut renamed = a.clone();
+        renamed.name = "Renamed".into();
+        save_account(&mut c, &renamed).unwrap();
+        let saved = accounts(&c).unwrap();
+        assert_eq!(
+            saved.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        assert_eq!(saved.iter().filter(|a| a.is_default).count(), 1);
+        assert_eq!(saved[0].email, a.email);
+        assert_eq!(saved[0].imap.login, a.imap.login);
+
         let m = Message {
             id: "m".into(),
             account_id: "a".into(),

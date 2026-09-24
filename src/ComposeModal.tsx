@@ -3,6 +3,15 @@ import { Paperclip, Send, Trash2, X, LoaderCircle } from "lucide-react";
 import { Modal } from "./Modal";
 import { api, errorText } from "./api";
 import type { Account, Compose, Attachment } from "./types";
+function hasContent(draft: Compose) {
+  return Boolean(
+    draft.to.trim() ||
+    draft.cc.trim() ||
+    draft.subject.trim() ||
+    draft.body.trim() ||
+    draft.attachments.length,
+  );
+}
 export default function ComposeModal({
   initial,
   accounts,
@@ -29,7 +38,7 @@ export default function ComposeModal({
     };
   }, []);
   useEffect(() => {
-    if (busy) return;
+    if (busy || !hasContent(draft)) return;
     const timer = setTimeout(() => {
       void api("save_draft", { draft })
         .then(() => {
@@ -47,7 +56,11 @@ export default function ComposeModal({
   };
   async function close() {
     try {
-      await api("save_draft", { draft: latest.current });
+      if (hasContent(latest.current)) {
+        await api("save_draft", { draft: latest.current });
+      } else {
+        await api("delete_draft", { id: latest.current.id });
+      }
       onClose();
     } catch (e) {
       setError(errorText(e));

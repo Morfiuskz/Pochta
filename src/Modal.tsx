@@ -22,7 +22,10 @@ export function Modal({
     const previous = document.activeElement as HTMLElement | null;
     const el = ref.current;
     (
-      el?.querySelector<HTMLElement>("input,select,textarea") ||
+      el?.querySelector<HTMLElement>(
+        'input:not([type="hidden"]):not(:disabled)',
+      ) ||
+      el?.querySelector<HTMLElement>("textarea,select") ||
       el?.querySelector<HTMLElement>("button")
     )?.focus();
     const key = (e: KeyboardEvent) => {

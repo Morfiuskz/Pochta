@@ -13,6 +13,7 @@ describe("Email isolation", () => {
     expect(html).not.toContain("onerror");
     expect(html).not.toContain("<script>");
     expect(html).toContain("img-src 'none'");
+    expect(html).toContain("html,body{background:#1b1e2a;color-scheme:dark}");
   });
   it("only allows opted-in http images without referrer", () => {
     const html = safeEmail(

@@ -242,6 +242,7 @@ export default function App() {
   }
   function navigate(f: string) {
     setFolder(f);
+    setFilter("all");
     resetViewer();
   }
   async function action(kind: string) {
@@ -271,7 +272,7 @@ export default function App() {
       await api("account_action", { id: a.id, action, value });
       const updated = await loadAccounts();
       if (
-        accountId === a.id &&
+        (accountId === a.id || selectedRef.current?.accountId === a.id) &&
         !updated.some((v) => v.id === a.id && v.enabled)
       ) {
         setAccountId("");
