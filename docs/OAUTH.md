@@ -41,6 +41,17 @@
 
 Реализованы системный браузер, Authorization Code + PKCE S256, state, loopback timeout, обмен кода, безопасное хранение access/refresh token, автоматический refresh и IMAP/SMTP XOAUTH2. Запрашивается только официальный scope `https://mail.google.com/`, необходимый для Gmail IMAP/SMTP. Он даёт полный доступ к почте и для публичного приложения требует OAuth verification, соблюдения Google API Services User Data Policy и, возможно, security assessment; в Testing доступны только добавленные тестовые пользователи, а их grants обычно истекают через 7 дней. Gmail и Googlemail определяются автоматически; Google Workspace на собственном домене предлагается только если ISPDB вернул серверы Google или пользователь выбрал «Google / Gmail» вручную.
 
+### Перед публичным релизом Google OAuth
+
+Сейчас Google OAuth работает в режиме **Testing**. Вход доступен только аккаунтам, добавленным в **Google Auth Platform → Audience → Test users**.
+
+Release prerequisite / TODO — сейчас не выполнять:
+
+- перевести Google OAuth app в **In Production**;
+- проверить требования Google verification для используемого Gmail scope `https://mail.google.com/`;
+- подготовить **Branding**, **Privacy Policy** и описание назначения доступа к почте;
+- убедиться, что внешние пользователи могут авторизоваться без ручного добавления в **Test users**.
+
 ## Mail / VK Mail
 
 [Официальная документация Mail OAuth](https://oauth.mail.ru/docs) теперь перенаправляет в документацию VK ID: OAuth Mail остаётся для продуктового доступа к почте. Нужны зарегистрированное приложение Mail, собственный Client ID, Client Secret на сервере владельца, зарегистрированный redirect и разрешение `openid mail.imap offline_access` (`prompt=consent`). Обычный социальный вход VK ID не заменяет доступ к IMAP.
