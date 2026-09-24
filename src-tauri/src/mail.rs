@@ -6,6 +6,7 @@ use lettre::{
     SmtpTransport, Transport,
 };
 use mailparse::{MailHeaderMap, ParsedMail};
+use serde::Serialize;
 use std::{
     io::{Read, Write},
     net::{TcpStream, ToSocketAddrs},
@@ -13,6 +14,9 @@ use std::{
     time::Duration,
 };
 const TIMEOUT: Duration = Duration::from_secs(25);
+const SYNC_LIMIT: usize = 200;
+const INITIAL_SYNC_LIMIT: usize = 50;
+const SYNC_BATCH_SIZE: usize = 20;
 fn imap_error(e: imap::Error) -> String {
     match e {
         imap::Error::Io(_) => "IMAP: сеть недоступна или сервер не отвечает".into(),
@@ -20,9 +24,15 @@ fn imap_error(e: imap::Error) -> String {
         _ => "IMAP: сервер отклонил запрос. Проверьте подключение и доступ к папке".into(),
     }
 }
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncProgress {
+    pub loaded: usize,
+    pub total: Option<usize>,
+}
 pub enum Job<'a> {
     Test,
-    Sync(&'a Path),
+    Sync(&'a Path, &'a dyn Fn(SyncProgress)),
     Action(&'a Path, &'a str, &'a str),
     Append(&'a [u8]),
 }
@@ -161,10 +171,13 @@ fn execute<T: Read + Write>(s: &mut imap::Session<T>, a: &Account, job: Job) -> 
             s.noop().map_err(imap_error)?;
             Ok("IMAP подключён".into())
         }
-        Job::Sync(path) => {
+        Job::Sync(path, on_progress) => {
             let mut c = db::open(path)?;
             let mut total = 0;
-            for (folder, kind) in folders(s)? {
+            let mut known_total = 0;
+            let mut sync_folders = folders(s)?;
+            sync_folders.sort_by_key(|(_, kind)| if kind == "inbox" { 0 } else { 1 });
+            for (folder, kind) in sync_folders {
                 if kind == "other" {
                     continue;
                 }
@@ -175,9 +188,17 @@ fn execute<T: Read + Write>(s: &mut imap::Session<T>, a: &Account, job: Job) -> 
                 let all = s.uid_search("UNDELETED").map_err(imap_error)?;
                 let mut uids: Vec<u32> = all.iter().copied().collect();
                 uids.sort_unstable();
-                let recent: Vec<_> = uids.into_iter().rev().take(200).collect();
-                let mut messages = vec![];
-                for chunk in recent.chunks(20) {
+                let recent: Vec<_> = uids.into_iter().rev().take(SYNC_LIMIT).collect();
+                known_total += recent.len();
+                on_progress(SyncProgress {
+                    loaded: total,
+                    total: Some(known_total),
+                });
+                let initial_end = recent.len().min(INITIAL_SYNC_LIMIT);
+                let chunks = recent[..initial_end]
+                    .chunks(SYNC_BATCH_SIZE)
+                    .chain(recent[initial_end..].chunks(SYNC_BATCH_SIZE));
+                for chunk in chunks {
                     let set = chunk
                         .iter()
                         .map(u32::to_string)
@@ -199,6 +220,7 @@ fn execute<T: Read + Write>(s: &mut imap::Session<T>, a: &Account, job: Job) -> 
                     let fetched = s
                         .uid_fetch(eligible, "(UID FLAGS INTERNALDATE BODY.PEEK[])")
                         .map_err(imap_error)?;
+                    let mut messages = Vec::new();
                     for f in fetched.iter() {
                         if let (Some(uid), Some(body)) = (f.uid, f.body()) {
                             let mut m = parse(body, a, &folder, &kind, uid, validity)?;
@@ -216,6 +238,16 @@ fn execute<T: Read + Write>(s: &mut imap::Session<T>, a: &Account, job: Job) -> 
                             messages.push(m);
                         }
                     }
+                    let tx = c.transaction().map_err(db::err)?;
+                    for m in messages {
+                        db::save_message(&tx, &m)?;
+                        total += 1;
+                    }
+                    tx.commit().map_err(db::err)?;
+                    on_progress(SyncProgress {
+                        loaded: total,
+                        total: Some(known_total),
+                    });
                 }
                 let tx = c.transaction().map_err(db::err)?;
                 let mut stmt = tx
@@ -235,10 +267,6 @@ fn execute<T: Read + Write>(s: &mut imap::Session<T>, a: &Account, job: Job) -> 
                             db::remove_message(&tx, &id)?;
                         }
                     }
-                }
-                for m in messages {
-                    db::save_message(&tx, &m)?;
-                    total += 1;
                 }
                 // Refresh flags for older cached messages without fetching their bodies again.
                 if mb.exists > 0 {

@@ -101,7 +101,13 @@ fn imap_sync_flags_delete_and_empty_folder() {
     let path = std::env::temp_dir().join(format!("morfius-test-{}.db", uuid::Uuid::new_v4()));
     let mut c = db::open(&path).unwrap();
     db::save_account(&mut c, &a).unwrap();
-    mail::run(&a, "fixture-password", mail::Job::Sync(&path)).unwrap();
+    let progress = |_| {};
+    mail::run(
+        &a,
+        "fixture-password",
+        mail::Job::Sync(&path, &progress),
+    )
+    .unwrap();
     let id = "fixture:INBOX:42:7";
     let m = db::message(&c, id).unwrap();
     assert_eq!(m.text, "Hello from IMAP");

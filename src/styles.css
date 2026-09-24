@@ -426,6 +426,12 @@ main {
   align-items: center;
   gap: 7px;
 }
+.sync-state.error {
+  color: #d48787;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .status-dot {
   width: 5px;
   height: 5px;

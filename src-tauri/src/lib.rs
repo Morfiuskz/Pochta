@@ -280,13 +280,24 @@ async fn test_connection(state: tauri::State<'_, State>, input: AccountInput) ->
     .await
 }
 #[tauri::command]
-async fn sync_account(state: tauri::State<'_, State>, id: String) -> Result<String> {
+async fn sync_account(
+    state: tauri::State<'_, State>,
+    id: String,
+    on_progress: tauri::ipc::Channel<mail::SyncProgress>,
+) -> Result<String> {
     work(state.inner().clone(), move |path| {
         let a = db::account(&db::open(path)?, &id)?;
         if !a.enabled {
             return Err("Аккаунт отключён".into());
         }
-        mail::run(&a, &oauth::credential(&a, "imap")?, mail::Job::Sync(path))
+        let progress = |update| {
+            let _ = on_progress.send(update);
+        };
+        mail::run(
+            &a,
+            &oauth::credential(&a, "imap")?,
+            mail::Job::Sync(path, &progress),
+        )
     })
     .await
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Channel } from "@tauri-apps/api/core";
 import {
   Archive,
   ArrowDownToLine,
@@ -43,6 +44,10 @@ const navigation = [
   ["trash", "Корзина", Trash2],
   ["archive", "Архив", Archive],
 ] as const;
+interface SyncProgress {
+  loaded: number;
+  total: number | null;
+}
 const dateLabel = (n: number) =>
   new Date(n * 1000).toLocaleDateString("ru-RU", {
     day: "numeric",
@@ -78,6 +83,8 @@ export default function App() {
     null,
   );
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  const [syncError, setSyncError] = useState("");
   const [acting, setActing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
@@ -119,11 +126,17 @@ export default function App() {
       if (syncLock.current) return;
       syncLock.current = true;
       setSyncing(true);
+      setSyncProgress(null);
+      setSyncError("");
       const failures: string[] = [];
       let count = 0;
       for (const a of items.filter((a) => a.enabled)) {
         try {
-          await api("sync_account", { id: a.id });
+          const onProgress = new Channel<SyncProgress>((progress) => {
+            setSyncProgress(progress);
+            void loadRef.current().catch((e) => notify(errorText(e), true));
+          });
+          await api("sync_account", { id: a.id, onProgress });
           count++;
         } catch (e) {
           failures.push(`${a.name}: ${errorText(e)}`);
@@ -145,15 +158,14 @@ export default function App() {
         }
       }
       setSyncing(false);
+      setSyncProgress(null);
       syncLock.current = false;
-      if (count)
-        setLastSync(
-          new Date().toLocaleTimeString("ru-RU", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        );
-      if (failures.length) notify(failures.join("\n"), true);
+      if (count) setLastSync("Обновлено только что");
+      if (failures.length) {
+        const message = failures.join("\n");
+        setSyncError(message);
+        notify(message, true);
+      }
     },
     [notify],
   );
@@ -306,6 +318,16 @@ export default function App() {
     });
   }
   const activeAccount = accounts.find((a) => a.id === accountId);
+  const progressLabel = syncProgress
+    ? syncProgress.total !== null
+      ? `${syncProgress.loaded} / ${syncProgress.total}`
+      : `Загружено ${syncProgress.loaded} писем`
+    : "";
+  const syncStatus = syncing
+    ? `Синхронизация…${progressLabel ? ` ${progressLabel}` : ""}`
+    : syncError
+      ? `Ошибка синхронизации: ${syncError}`
+      : lastSync || "Локальный кэш";
   const title = navigation.find((n) => n[0] === folder)?.[1] || "Все письма";
   const visibleDrafts = drafts.filter(
     (d) =>
@@ -508,13 +530,12 @@ export default function App() {
               <kbd>Ctrl K</kbd>
             )}
           </div>
-          <div className="sync-state">
+          <div
+            className={`sync-state${syncError && !syncing ? " error" : ""}`}
+            title={syncStatus}
+          >
             <span className={syncing ? "status-dot syncing" : "status-dot"} />
-            {syncing
-              ? "Синхронизация…"
-              : lastSync
-                ? `Обновлено в ${lastSync}`
-                : "Локальный кэш"}
+            {syncStatus}
           </div>
           <button
             className="icon-button"
@@ -671,8 +692,12 @@ export default function App() {
               {syncing ? (
                 <>
                   <LoaderCircle size={13} className="spin" />
-                  Обновляем почту…
+                  {progressLabel
+                    ? `Синхронизация… ${progressLabel}`
+                    : "Синхронизация…"}
                 </>
+              ) : syncError ? (
+                <>Ошибка синхронизации: {syncError}</>
               ) : (
                 <>
                   <ShieldCheck size={13} />
