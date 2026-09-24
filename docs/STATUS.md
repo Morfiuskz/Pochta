@@ -1,6 +1,6 @@
 # Статус
 
-Дата: 2026-09-24. Реализован MVP. Основной пользовательский сценарий проверен через native UI на изолированных локальных IMAP/SMTP-серверах. Предыдущая Windows NSIS сборка успешна; для текущих исправлений запускается финальная сборка.
+Дата: 2026-09-24. Реализован MVP. Основной пользовательский сценарий проверен через native UI на изолированных локальных IMAP/SMTP-серверах. Финальная Windows NSIS сборка с текущими исправлениями завершилась успешно.
 
 ## Реализовано
 
@@ -26,9 +26,11 @@
 
 - `npm run typecheck`, `npm run lint`, `npm run build`: успешно.
 - Vitest: 3 теста — HTML isolation, opt-in images, Reply All.
-- Финальный локальный Rust pass: 4 focused теста (конфигурация, MIME, folder mapping, SQLite/FTS/order/default/rename). Ранее прошедшие 2 loopback integration tests локально не повторялись; полный набор из 6 запускается Windows CI.
+- Финальный локальный Rust pass: 4 focused теста (конфигурация, MIME, folder mapping, SQLite/FTS/order/default/rename). Ранее прошедшие 2 loopback integration tests локально не повторялись; полный набор из 6 успешно прошёл в финальном Windows CI.
 - `cargo check`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt`: успешно.
-- Native macOS release ранее собран; текущая QA `.app` пересобрана и проверена через native UI. [Предыдущий Windows NSIS build](https://github.com/Morfiuskz/Pochta/actions/runs/35890962013) завершился успешно.
+- Native macOS release ранее собран; текущая QA `.app` пересобрана и проверена через native UI.
+- [Финальный Windows NSIS build](https://github.com/Morfiuskz/Pochta/actions/runs/35962350882) для исходного commit `ed879a60a24ab1f522756433993d4d4ea1d9493f` завершился успешно: typecheck, lint, 3 frontend и 6 Rust тестов, fmt, Clippy и сборка installer.
+- Артефакт `Morfius-Mail-Windows-x64` скачан в `artifacts/windows/Morfius Mail_0.1.0_x64-setup.exe` (3,1 МБ). Файл подтверждён как Windows NSIS executable; каталог artifacts исключён из Git.
 - `npm audit`: 0 уязвимостей после обновления Vitest.
 - UI проверен в браузере: основной экран, account modal, автоконфигурация Gmail, фокус и адаптация к высоте окна.
 
