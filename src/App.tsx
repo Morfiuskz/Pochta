@@ -148,7 +148,7 @@ export default function App() {
   );
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
-  const [syncError, setSyncError] = useState("");
+  const [syncErrors, setSyncErrors] = useState<Record<string, string>>({});
   const [acting, setActing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
@@ -227,6 +227,13 @@ export default function App() {
   const loadAccounts = useCallback(async () => {
     const a = await api<Account[]>("list_accounts");
     setAccounts(a);
+    setSyncErrors((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([id]) =>
+          a.some((account) => account.id === id),
+        ),
+      ),
+    );
     return a;
   }, []);
   const load = useCallback(async () => {
@@ -250,10 +257,16 @@ export default function App() {
       syncLock.current = true;
       setSyncing(true);
       setSyncProgress(null);
-      setSyncError("");
-      const failures: string[] = [];
+      const enabled = items.filter((a) => a.enabled);
+      const attempted = new Set(enabled.map((a) => a.id));
+      setSyncErrors((current) =>
+        Object.fromEntries(
+          Object.entries(current).filter(([id]) => !attempted.has(id)),
+        ),
+      );
       let count = 0;
-      for (const a of items.filter((a) => a.enabled)) {
+      for (const a of enabled) {
+        setSyncProgress(null);
         try {
           const onProgress = new Channel<SyncProgress>((progress) => {
             setSyncProgress(progress);
@@ -262,7 +275,10 @@ export default function App() {
           await api("sync_account", { id: a.id, onProgress });
           count++;
         } catch (e) {
-          failures.push(`${accountLabel(a)}: ${errorText(e)}`);
+          setSyncErrors((current) => ({
+            ...current,
+            [a.id]: errorText(e),
+          }));
         }
       }
       const current = selectedRef.current;
@@ -284,11 +300,6 @@ export default function App() {
       setSyncProgress(null);
       syncLock.current = false;
       if (count) setLastSync("Обновлено только что");
-      if (failures.length) {
-        const message = failures.join("\n");
-        setSyncError(message);
-        notify(message, true);
-      }
     },
     [notify],
   );
@@ -446,11 +457,21 @@ export default function App() {
       ? `${syncProgress.loaded} / ${syncProgress.total}`
       : `Загружено ${syncProgress.loaded} писем`
     : "";
+  const syncErrorEntries = Object.entries(syncErrors).filter(([id]) =>
+    accounts.some((account) => account.id === id && account.enabled),
+  );
+  const syncErrorCount = syncErrorEntries.length;
+  const syncErrorDetails = syncErrorEntries
+    .map(([id, error]) => {
+      const account = accounts.find((item) => item.id === id);
+      return `${account ? accountLabel(account) : id}: ${error}`;
+    })
+    .join("\n");
   const syncStatus = syncing
     ? `Синхронизация…${progressLabel ? ` ${progressLabel}` : ""}`
-    : syncError
-      ? `Ошибка синхронизации: ${syncError}`
-      : lastSync || "Локальный кэш";
+    : `${lastSync || "Локальный кэш"}${
+        syncErrorCount ? ` · Не обновлено: ${syncErrorCount}` : ""
+      }`;
   const title = navigation.find((n) => n[0] === folder)?.[1] || "Все письма";
   const visibleDrafts = drafts.filter(
     (d) =>
@@ -551,9 +572,28 @@ export default function App() {
                       <span title="По умолчанию" className="default-dot" />
                     )}
                   </strong>
+                  {syncErrors[a.id] && a.enabled && (
+                    <small
+                      className="account-sync-error"
+                      title={syncErrors[a.id]}
+                    >
+                      {syncErrors[a.id]}
+                    </small>
+                  )}
                   {!a.enabled && <small>Отключён</small>}
                 </span>
               </button>
+              {syncErrors[a.id] && a.enabled && (
+                <button
+                  className="icon-button sync-retry"
+                  aria-label={`Повторить синхронизацию ${accountLabel(a)}`}
+                  title="Повторить синхронизацию"
+                  disabled={syncing}
+                  onClick={() => void sync([a])}
+                >
+                  <RefreshCw size={13} />
+                </button>
+              )}
               <button
                 className="icon-button account-more"
                 aria-label={`Меню ${accountLabel(a)}`}
@@ -701,8 +741,8 @@ export default function App() {
             )}
           </div>
           <div
-            className={`sync-state${syncError && !syncing ? " error" : ""}`}
-            title={syncStatus}
+            className={`sync-state${syncErrorCount && !syncing ? " warning" : ""}`}
+            title={syncErrorDetails || syncStatus}
           >
             <span className={syncing ? "status-dot syncing" : "status-dot"} />
             {syncStatus}
@@ -864,8 +904,8 @@ export default function App() {
                     ? `Синхронизация… ${progressLabel}`
                     : "Синхронизация…"}
                 </>
-              ) : syncError ? (
-                <>Ошибка синхронизации: {syncError}</>
+              ) : syncErrorCount ? (
+                <>{syncErrorCount} аккаунт(а) временно не обновлены</>
               ) : (
                 <>
                   <ShieldCheck size={13} />

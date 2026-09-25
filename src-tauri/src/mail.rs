@@ -8,6 +8,7 @@ use lettre::{
 use mailparse::{MailHeaderMap, ParsedMail};
 use serde::Serialize;
 use std::{
+    collections::{BTreeSet, HashMap},
     io::{Read, Write},
     net::{TcpStream, ToSocketAddrs},
     path::Path,
@@ -17,6 +18,72 @@ const TIMEOUT: Duration = Duration::from_secs(25);
 const SYNC_LIMIT: usize = 200;
 const INITIAL_SYNC_LIMIT: usize = 50;
 const SYNC_BATCH_SIZE: usize = 20;
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CachedUid {
+    id: String,
+    uid: u32,
+    uid_validity: u32,
+}
+#[derive(Debug, PartialEq, Eq)]
+struct FolderSyncPlan {
+    new_uids: Vec<u32>,
+    retained_uids: Vec<u32>,
+    remove_ids: Vec<String>,
+    validity_changed: bool,
+}
+fn folder_sync_plan(
+    validity: u32,
+    stored_validity: Option<u32>,
+    server_uids: &BTreeSet<u32>,
+    cached: &[CachedUid],
+) -> FolderSyncPlan {
+    let validity_changed = stored_validity.is_some_and(|stored| stored != validity)
+        || cached
+            .iter()
+            .any(|message| message.uid_validity != validity);
+    let cached_uids = if validity_changed {
+        BTreeSet::new()
+    } else {
+        cached.iter().map(|message| message.uid).collect()
+    };
+    let new_uids = server_uids
+        .iter()
+        .rev()
+        .take(SYNC_LIMIT)
+        .filter(|uid| !cached_uids.contains(uid))
+        .copied()
+        .collect();
+    let retained_uids = if validity_changed {
+        Vec::new()
+    } else {
+        cached_uids.intersection(server_uids).copied().collect()
+    };
+    let remove_ids = cached
+        .iter()
+        .filter(|message| validity_changed || !server_uids.contains(&message.uid))
+        .map(|message| message.id.clone())
+        .collect();
+    FolderSyncPlan {
+        new_uids,
+        retained_uids,
+        remove_ids,
+        validity_changed,
+    }
+}
+fn uid_set(uids: &[u32]) -> String {
+    uids.iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+struct PreparedFolder {
+    folder: String,
+    kind: String,
+    validity: u32,
+    new_uids: Vec<u32>,
+    retained_uids: Vec<u32>,
+    remove_ids: Vec<String>,
+}
 fn imap_error(e: imap::Error) -> String {
     match e {
         imap::Error::Io(_) => "IMAP: сеть недоступна или сервер не отвечает".into(),
@@ -173,8 +240,8 @@ fn execute<T: Read + Write>(s: &mut imap::Session<T>, a: &Account, job: Job) -> 
         }
         Job::Sync(path, on_progress) => {
             let mut c = db::open(path)?;
-            let mut total = 0;
-            let mut known_total = 0;
+            let mut prepared = Vec::new();
+            let mut new_total = 0;
             let mut sync_folders = folders(s)?;
             sync_folders.sort_by_key(|(_, kind)| if kind == "inbox" { 0 } else { 1 });
             for (folder, kind) in sync_folders {
@@ -185,45 +252,88 @@ fn execute<T: Read + Write>(s: &mut imap::Session<T>, a: &Account, job: Job) -> 
                 let validity = mb
                     .uid_validity
                     .ok_or("IMAP: сервер не сообщил UIDVALIDITY")?;
-                let all = s.uid_search("UNDELETED").map_err(imap_error)?;
-                let mut uids: Vec<u32> = all.iter().copied().collect();
-                uids.sort_unstable();
-                let recent: Vec<_> = uids.into_iter().rev().take(SYNC_LIMIT).collect();
-                known_total += recent.len();
-                on_progress(SyncProgress {
-                    loaded: total,
-                    total: Some(known_total),
-                });
-                let initial_end = recent.len().min(INITIAL_SYNC_LIMIT);
-                let chunks = recent[..initial_end]
-                    .chunks(SYNC_BATCH_SIZE)
-                    .chain(recent[initial_end..].chunks(SYNC_BATCH_SIZE));
-                for chunk in chunks {
-                    let set = chunk
-                        .iter()
-                        .map(u32::to_string)
-                        .collect::<Vec<_>>()
-                        .join(",");
+                let server_uids: BTreeSet<u32> = s
+                    .uid_search("UNDELETED")
+                    .map_err(imap_error)?
+                    .into_iter()
+                    .collect();
+                let cached = db::folder_messages(&c, &a.id, &folder)?
+                    .into_iter()
+                    .map(|message| CachedUid {
+                        id: message.id,
+                        uid: message.uid,
+                        uid_validity: message.uid_validity,
+                    })
+                    .collect::<Vec<_>>();
+                let plan = folder_sync_plan(
+                    validity,
+                    db::folder_validity(&c, &a.id, &folder)?,
+                    &server_uids,
+                    &cached,
+                );
+                let mut sizes = HashMap::new();
+                for chunk in plan.new_uids.chunks(SYNC_BATCH_SIZE) {
                     let meta = s
-                        .uid_fetch(&set, "(UID FLAGS RFC822.SIZE)")
+                        .uid_fetch(uid_set(chunk), "(UID RFC822.SIZE)")
                         .map_err(imap_error)?;
-                    let eligible = meta
-                        .iter()
-                        .filter(|f| f.size.unwrap_or(0) <= 25 * 1024 * 1024)
-                        .filter_map(|f| f.uid)
-                        .map(|u| u.to_string())
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    if eligible.is_empty() {
-                        continue;
+                    for fetch in meta.iter() {
+                        if let (Some(uid), Some(size)) = (fetch.uid, fetch.size) {
+                            sizes.insert(uid, size);
+                        }
                     }
+                }
+                let new_uids = plan
+                    .new_uids
+                    .into_iter()
+                    .filter(|uid| sizes.get(uid).is_some_and(|size| *size <= 25 * 1024 * 1024))
+                    .collect::<Vec<_>>();
+                new_total += new_uids.len();
+                prepared.push(PreparedFolder {
+                    folder,
+                    kind,
+                    validity,
+                    new_uids,
+                    retained_uids: plan.retained_uids,
+                    remove_ids: plan.remove_ids,
+                });
+            }
+            let mut loaded = 0;
+            on_progress(SyncProgress {
+                loaded,
+                total: Some(new_total),
+            });
+            for plan in prepared {
+                let mb = s.select(&plan.folder).map_err(imap_error)?;
+                if mb.uid_validity != Some(plan.validity) {
+                    return Err(
+                        "IMAP: UIDVALIDITY изменился во время синхронизации. Повторите обновление"
+                            .into(),
+                    );
+                }
+                let tx = c.transaction().map_err(db::err)?;
+                for id in &plan.remove_ids {
+                    db::remove_message(&tx, id)?;
+                }
+                tx.execute(
+                    "INSERT OR REPLACE INTO folders VALUES(?1,?2,?3,?4)",
+                    rusqlite::params![a.id, plan.folder, plan.kind, plan.validity],
+                )
+                .map_err(db::err)?;
+                tx.commit().map_err(db::err)?;
+
+                let initial_end = plan.new_uids.len().min(INITIAL_SYNC_LIMIT);
+                let chunks = plan.new_uids[..initial_end]
+                    .chunks(SYNC_BATCH_SIZE)
+                    .chain(plan.new_uids[initial_end..].chunks(SYNC_BATCH_SIZE));
+                for chunk in chunks {
                     let fetched = s
-                        .uid_fetch(eligible, "(UID FLAGS INTERNALDATE BODY.PEEK[])")
+                        .uid_fetch(uid_set(chunk), "(UID FLAGS INTERNALDATE BODY.PEEK[])")
                         .map_err(imap_error)?;
                     let mut messages = Vec::new();
                     for f in fetched.iter() {
                         if let (Some(uid), Some(body)) = (f.uid, f.body()) {
-                            let mut m = parse(body, a, &folder, &kind, uid, validity)?;
+                            let mut m =
+                                parse(body, a, &plan.folder, &plan.kind, uid, plan.validity)?;
                             m.read = f
                                 .flags()
                                 .iter()
@@ -241,39 +351,23 @@ fn execute<T: Read + Write>(s: &mut imap::Session<T>, a: &Account, job: Job) -> 
                     let tx = c.transaction().map_err(db::err)?;
                     for m in messages {
                         db::save_message(&tx, &m)?;
-                        total += 1;
+                        loaded += 1;
                     }
                     tx.commit().map_err(db::err)?;
                     on_progress(SyncProgress {
-                        loaded: total,
-                        total: Some(known_total),
+                        loaded,
+                        total: Some(new_total),
                     });
                 }
+
                 let tx = c.transaction().map_err(db::err)?;
-                let mut stmt = tx
-                    .prepare("SELECT id,data FROM messages WHERE account_id=?1 AND folder=?2")
-                    .map_err(db::err)?;
-                let old = stmt
-                    .query_map(rusqlite::params![a.id, folder], |r| {
-                        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-                    })
-                    .map_err(db::err)?
-                    .collect::<std::result::Result<Vec<_>, _>>()
-                    .map_err(db::err)?;
-                drop(stmt);
-                for (id, data) in old {
-                    if let Ok(m) = serde_json::from_str::<Message>(&data) {
-                        if m.uid_validity != validity || !all.contains(&m.uid) {
-                            db::remove_message(&tx, &id)?;
-                        }
-                    }
-                }
-                // Refresh flags for older cached messages without fetching their bodies again.
-                if mb.exists > 0 {
-                    let flags = s.uid_fetch("1:*", "(UID FLAGS)").map_err(imap_error)?;
+                for chunk in plan.retained_uids.chunks(SYNC_BATCH_SIZE) {
+                    let flags = s
+                        .uid_fetch(uid_set(chunk), "(UID FLAGS)")
+                        .map_err(imap_error)?;
                     for f in flags.iter() {
                         if let Some(uid) = f.uid {
-                            let id = format!("{}:{}:{}:{}", a.id, folder, validity, uid);
+                            let id = format!("{}:{}:{}:{}", a.id, plan.folder, plan.validity, uid);
                             if let Ok(mut m) = db::message(&tx, &id) {
                                 m.read = f
                                     .flags()
@@ -288,14 +382,9 @@ fn execute<T: Read + Write>(s: &mut imap::Session<T>, a: &Account, job: Job) -> 
                         }
                     }
                 }
-                tx.execute(
-                    "INSERT OR REPLACE INTO folders VALUES(?1,?2,?3,?4)",
-                    rusqlite::params![a.id, folder, kind, validity],
-                )
-                .map_err(db::err)?;
                 tx.commit().map_err(db::err)?;
             }
-            Ok(format!("Синхронизировано писем: {total}"))
+            Ok(format!("Загружено новых писем: {loaded}"))
         }
         Job::Action(path, id, action) => {
             let mut c = db::open(path)?;
@@ -591,6 +680,50 @@ pub fn send(a: &Account, d: &Compose) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn cached(id: &str, uid: u32, uid_validity: u32) -> CachedUid {
+        CachedUid {
+            id: id.into(),
+            uid,
+            uid_validity,
+        }
+    }
+    #[test]
+    fn incremental_sync_cached_uid_skips_body_fetch() {
+        let plan = folder_sync_plan(42, Some(42), &BTreeSet::from([7]), &[cached("7", 7, 42)]);
+        assert!(plan.new_uids.is_empty());
+        assert_eq!(plan.retained_uids, vec![7]);
+        assert!(plan.remove_ids.is_empty());
+    }
+    #[test]
+    fn incremental_sync_new_uid_schedules_body_fetch() {
+        let plan = folder_sync_plan(42, Some(42), &BTreeSet::from([7, 8]), &[cached("7", 7, 42)]);
+        assert_eq!(plan.new_uids, vec![8]);
+        assert_eq!(plan.retained_uids, vec![7]);
+    }
+    #[test]
+    fn incremental_sync_deleted_uid_is_removed() {
+        let plan = folder_sync_plan(
+            42,
+            Some(42),
+            &BTreeSet::from([8]),
+            &[cached("7", 7, 42), cached("8", 8, 42)],
+        );
+        assert_eq!(plan.remove_ids, vec!["7"]);
+        assert_eq!(plan.retained_uids, vec![8]);
+    }
+    #[test]
+    fn incremental_sync_uidvalidity_change_schedules_resync() {
+        let plan = folder_sync_plan(
+            42,
+            Some(41),
+            &BTreeSet::from([7, 8]),
+            &[cached("old-7", 7, 41)],
+        );
+        assert!(plan.validity_changed);
+        assert_eq!(plan.new_uids, vec![8, 7]);
+        assert!(plan.retained_uids.is_empty());
+        assert_eq!(plan.remove_ids, vec!["old-7"]);
+    }
     #[test]
     fn xoauth_payload() {
         use imap::Authenticator;

@@ -298,6 +298,9 @@ small {
   color: #727990;
   margin-top: 5px;
 }
+.account-copy .account-sync-error {
+  color: #bd8f82;
+}
 .default-dot {
   width: 4px;
   height: 4px;
@@ -306,6 +309,10 @@ small {
 }
 .account-more {
   width: 23px;
+}
+.sync-retry {
+  width: 22px;
+  color: #bd8f82;
 }
 .add-first {
   justify-content: start;
@@ -441,8 +448,8 @@ main {
   align-items: center;
   gap: 7px;
 }
-.sync-state.error {
-  color: #d48787;
+.sync-state.warning {
+  color: #bd9a75;
   max-width: 340px;
   overflow: hidden;
   text-overflow: ellipsis;

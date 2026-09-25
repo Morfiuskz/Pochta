@@ -90,6 +90,29 @@ pub fn message(c: &Connection, id: &str) -> Result<Message> {
         .map_err(err)?;
     serde_json::from_str(&s).map_err(|_| "Письмо повреждено".into())
 }
+pub fn folder_messages(c: &Connection, account_id: &str, folder: &str) -> Result<Vec<Message>> {
+    let mut stmt = c
+        .prepare("SELECT data FROM messages WHERE account_id=?1 AND folder=?2")
+        .map_err(err)?;
+    let rows = stmt
+        .query_map(params![account_id, folder], |r| r.get::<_, String>(0))
+        .map_err(err)?;
+    rows.map(|row| {
+        serde_json::from_str::<Message>(&row.map_err(err)?).map_err(|_| "Письмо повреждено".into())
+    })
+    .collect()
+}
+pub fn folder_validity(c: &Connection, account_id: &str, folder: &str) -> Result<Option<u32>> {
+    match c.query_row(
+        "SELECT validity FROM folders WHERE account_id=?1 AND name=?2",
+        params![account_id, folder],
+        |row| row.get(0),
+    ) {
+        Ok(validity) => Ok(Some(validity)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(error) => Err(err(error)),
+    }
+}
 pub fn remove_message(c: &Connection, id: &str) -> Result<()> {
     c.execute("DELETE FROM messages WHERE id=?1", [id])
         .map_err(err)?;
