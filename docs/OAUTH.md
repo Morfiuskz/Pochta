@@ -20,9 +20,9 @@
     "redirectUri": "http://127.0.0.1:43823/oauth/callback"
   },
   "mail": {
-    "clientId": "",
-    "redirectUri": "http://127.0.0.1:43822/oauth/callback",
-    "brokerUrl": ""
+    "clientId": "01a0d7ea156e7e919401cdd18b520c21",
+    "redirectUri": "http://127.0.0.1:43825/oauth/callback",
+    "brokerUrl": "https://oauth.morfius.ru/mail/token"
   }
 }
 ```
@@ -66,11 +66,11 @@ Release prerequisite / TODO — сейчас не выполнять:
 - token endpoint поддерживает только client authentication `client_secret_basic` и `client_secret_post`; официальный пример выполняет обмен с сервера и передаёт Client Secret через HTTP Basic;
 - XOAUTH2 для `imap.mail.ru` и `smtp.mail.ru` использует SASL payload `user=<email>\x01auth=Bearer <access_token>\x01\x01`, закодированный Base64. Официальные серверы и порты: IMAP 993/TLS, SMTP 465/TLS.
 
-Документация требует точного совпадения зарегистрированного `redirect_uri` и допускает в нём схемы HTTP или HTTPS, но отдельно не гарантирует регистрацию loopback URI для desktop/installed application. Поэтому `http://127.0.0.1:43822/oauth/callback` необходимо подтвердить в кабинете конкретного приложения Mail; без принятого Mail redirect и live-проверки flow нельзя считать завершённым.
+Для приложения «Почта» зарегистрированы публичный Client ID `01a0d7ea156e7e919401cdd18b520c21` и точный loopback redirect `http://127.0.0.1:43825/oauth/callback`. Client Secret остаётся только на broker-сервере. Регистрация параметров завершена, но полный browser → broker → IMAP/SMTP flow ещё требует live-проверки после развёртывания broker.
 
 [Официальная справка обычной Почты Mail](https://help.mail.ru/mail/security/protection/settings/) подтверждает OAuth для внешних почтовых программ, а [инструкция подключения клиента](https://help.mail.ru/mail/login/mailer/) отдельно сохраняет fallback через пароль приложения. Для VK WorkSpace/custom-domain ящиков [публичная инструкция для почтовых клиентов](https://workspace.vk.ru/docs/saas/ru/mail/login/client-password) подтверждает пароль приложения, но не подтверждает применение OAuth Mail к таким ящикам. До согласования с Mail/VK WorkSpace для них следует использовать пароль приложения, а OAuth не заявлять как гарантированно поддерживаемый.
 
-Клиентская часть реализована: актуальный OpenID discovery и ограничение OAuth endpoints доменами Mail, системный браузер, PKCE S256/state, loopback callback, обмен authorization code и refresh через broker, secure storage и стандартный IMAP/SMTP XOAUTH2. Client Secret нельзя безопасно встроить в desktop-бинарь, поэтому Mail включается **только с настроенным HTTPS `brokerUrl`**. В репозитории нет развёрнутого broker-сервиса: владелец должен зарегистрировать OAuth Mail приложение, подтвердить redirect, безопасно разместить Client Secret и развернуть broker. До этого Mail OAuth не готов к реальному использованию; app-password IMAP/SMTP работает независимо.
+Клиентская часть реализована: актуальный OpenID discovery и ограничение OAuth endpoints доменами Mail, системный браузер, PKCE S256/state, loopback callback, обмен authorization code и refresh через broker, secure storage и стандартный IMAP/SMTP XOAUTH2. Client Secret нельзя безопасно встроить в desktop-бинарь, поэтому Mail включается **только с настроенным HTTPS `brokerUrl`**. Минимальный broker находится в [`broker/`](../broker/README.md); его ещё нужно развернуть на `oauth.morfius.ru` и передать секрет через environment. До этого Mail OAuth не готов к реальному использованию; app-password IMAP/SMTP работает независимо.
 
 ### Контракт HTTPS broker
 
@@ -79,9 +79,11 @@ Release prerequisite / TODO — сейчас не выполнять:
 - `grant_type=authorization_code`, `client_id`, `redirect_uri`, `code`, `code_verifier`;
 - либо `grant_type=refresh_token`, `client_id`, `refresh_token`.
 
-Сервер закрепляет собственные client ID и допустимые redirect URI, принимает только перечисленные grant types, ограничивает размер/частоту запросов, не логирует тела/коды/токены и не сохраняет их. Он получает актуальный token endpoint из официального Mail OpenID discovery, добавляет HTTP Basic `client_id:client_secret`, делает HTTPS POST и возвращает только `{ "access_token": "…", "refresh_token": "…", "expires_in": 3600 }`. При ошибке он сохраняет upstream HTTP 4xx/5xx и возвращает только стандартные безопасные поля `{ "error": "…", "error_description": "…" }`. Секрет хранится в серверном secret manager. Все ответы содержат `Cache-Control: no-store`. Broker не должен быть произвольным HTTP-прокси. Для Яндекса аналогичный endpoint обращается к официальному `/token`, добавляя credentials приложения; при PKCE сохраняет `code_verifier` в запросе.
+Реализация `POST /mail/token` закрепляет Client ID `01a0d7ea156e7e919401cdd18b520c21`, redirect URI `http://127.0.0.1:43825/oauth/callback`, разрешённые поля и единственный upstream `https://o2.mail.ru/api/v1/oidc/token/issue`, повторно подтверждённый официальным discovery. Для client authentication выбран документированный `client_secret_basic`: broker добавляет HTTP Basic `client_id:client_secret`, где секрет читается только из `MAIL_OAUTH_CLIENT_SECRET`. Клиент не может передать upstream URL или secret.
 
-Broker получает токены по необходимости обмена. Его эксплуатация и доверие к владельцу — обязательное условие этого варианта. Для полностью локальной установки используйте Яндекс PKCE с повторным входом или пароль приложения.
+Broker ограничивает request body 16 КБ, upstream response 64 КБ, upstream timeout 10 секунд и частоту token-запросов; CORS не включён. Тела, коды и токены не логируются и не сохраняются. Успешный OAuth JSON возвращается desktop-клиенту, а ошибки ограничиваются безопасными `error`/`error_description` с исходным HTTP status. Все ответы содержат `Cache-Control: no-store`; `GET /health` возвращает `{"status":"ok"}`. Сборка, systemd, nginx и Let's Encrypt описаны в [`broker/README.md`](../broker/README.md).
+
+Broker получает токены только на время конкретного обмена и не использует БД. Его эксплуатация и доверие к владельцу — обязательное условие этого варианта. Client Secret нельзя добавлять в desktop `oauth.json`. Для полностью локальной установки используйте Яндекс PKCE с повторным входом или пароль приложения.
 
 ## Хранение и ограничения
 

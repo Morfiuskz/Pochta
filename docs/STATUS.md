@@ -9,13 +9,14 @@
 - Отдельные методы Password/OAuth, backward-compatible serde default для существующих аккаунтов. Сохранение требует успешной проверки IMAP и SMTP.
 - Яндекс: реализованы code + PKCE S256/state, loopback callback, browser login и IMAP/SMTP XOAUTH2; требуется Client ID владельца. Официальный refresh требует Client Secret, поэтому без broker после истечения токена UI предлагает безопасный повторный вход.
 - Google: реализован официальный Desktop flow через системный браузер — Authorization Code + PKCE/state, отдельный loopback callback, scope `https://mail.google.com/`, IMAP/SMTP XOAUTH2, secure storage и автоматический refresh. Gmail/Googlemail распознаются напрямую; Google Workspace предлагается только по ISPDB-серверам Google или ручному выбору. Требуется Desktop Client ID владельца и настройка consent screen/test users.
-- Mail: официально подтверждены discovery, PKCE S256/state, `openid mail.imap offline_access`, refresh token и единый XOAUTH2 bearer format для IMAP/SMTP. Allowlist обновлён для актуальных endpoints на `o2.mail.ru`. Обмен и refresh требуют Client Secret, поэтому остаются за HTTPS broker; broker не развёрнут, loopback redirect не проверен при регистрации. Для VK WorkSpace/custom-domain OAuth Mail публично не подтверждён — используется app-password/manual fallback. Microsoft OAuth пока не реализован; Outlook не предлагает пароль как замену OAuth.
+- Mail: зарегистрированы Client ID и loopback redirect `127.0.0.1:43825`; официально подтверждены discovery, PKCE S256/state, `openid mail.imap offline_access`, refresh token и единый XOAUTH2 bearer format для IMAP/SMTP. В `broker/` реализован stateless HTTPS token broker с секретом из environment, фиксированным Mail upstream, Basic auth, валидацией, лимитами и deploy-конфигурацией. Реальный deploy и live flow ещё не выполнены. Для VK WorkSpace/custom-domain OAuth Mail публично не подтверждён — используется app-password/manual fallback. Microsoft OAuth пока не реализован; Outlook не предлагает пароль как замену OAuth.
 - Токены только в системном vault, не IPC/SQLite/log. OAuth-хосты ограничены provider; TLS validation сохранена. Конфигурация и контракт broker: [OAUTH.md](OAUTH.md).
 - Manual IMAP/SMTP, TLS/STARTTLS/None, отдельные credentials SMTP работают; POP3 явно отключён («позже»).
 - В браузере проверены компактная форма, Яндекс, app-password, неизвестный домен и ручной fallback. Исправлено сохранение чужого preset при возврате и смене email.
 
 ## Проверка текущих изменений
 
+- Mail OAuth broker: `npm run typecheck` и `npm run build` в `broker/` успешны; локально проверены `GET /health` (200/no-store) и безопасный отказ для чужого Client ID (401). Реальный Mail token exchange не выполнялся без серверного Client Secret и одноразового authorization code.
 - Для завершения Yandex OAuth и добавления Google OAuth выполнены ровно `npm run typecheck` и `cargo check --manifest-path src-tauri/Cargo.toml --locked`: успешно. Полные test suites и release build не запускались; live OAuth оставлен для ручной проверки с Client IDs владельца.
 - TypeScript typecheck, ESLint: успешно.
 - Frontend: 5 тестов, включая domain matching, fallback/auth selection и сохранение display metadata.
@@ -23,7 +24,7 @@
 - Cargo check, Clippy all-targets с `-D warnings`, rustfmt: успешно. Есть прежнее предупреждение future incompatibility `imap-proto 0.10.2`.
 - Vite production build: успешно. Tauri release `.app`: успешно, `src-tauri/target/release/bundle/macos/Почта.app`. Native запуск, новое имя, onboarding и понятный отказ OAuth без конфигурации проверены.
 - Native ISPDB: настройки GMX загружены; HTTP 404 для Fastmail корректно перевёл в manual fallback. Пароли и реальные аккаунты для этой проверки не использовались.
-- Реальный Yandex/Google OAuth не проверен: developer credentials не предоставлены. На Windows ещё нужны browser callback, Credential Manager для tokens, IMAP/SMTP XOAUTH2 и Google refresh; для Mail нужны зарегистрированное OAuth Mail приложение, принятый loopback redirect, развёрнутый broker и live-проверка обычного Mail-аккаунта. Поддержка OAuth для VK WorkSpace/custom-domain требует отдельного официального подтверждения.
+- На Windows ещё нужны browser callback, Credential Manager для tokens, IMAP/SMTP XOAUTH2 и Google refresh; для Mail нужны deploy broker на `oauth.morfius.ru`, серверный `MAIL_OAUTH_CLIENT_SECRET` и live-проверка обычного Mail-аккаунта. Поддержка OAuth для VK WorkSpace/custom-domain требует отдельного официального подтверждения.
 
 ## Реализовано
 

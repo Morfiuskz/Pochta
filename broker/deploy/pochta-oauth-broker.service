@@ -1,0 +1,28 @@
+[Unit]
+Description=Pochta Mail OAuth broker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pochta-oauth
+Group=pochta-oauth
+WorkingDirectory=/opt/pochta-oauth-broker
+Environment=NODE_ENV=production
+Environment=PORT=8787
+EnvironmentFile=/etc/pochta-oauth-broker.env
+ExecStart=/usr/bin/node /opt/pochta-oauth-broker/dist/server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
