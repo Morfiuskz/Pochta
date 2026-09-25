@@ -6,7 +6,6 @@ import {
   ArrowUpDown,
   ArrowUpRight,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -31,7 +30,7 @@ import {
 } from "lucide-react";
 import type { Account, Compose, Message, Summary } from "./types";
 import { api, desktop, errorText } from "./api";
-import { reply, safeEmail } from "./mail-ui";
+import { accountDisplayName, accountLabel, reply, safeEmail } from "./mail-ui";
 import AccountModal from "./AccountModal";
 import ComposeModal from "./ComposeModal";
 import CustomDropdown from "./CustomDropdown";
@@ -263,7 +262,7 @@ export default function App() {
           await api("sync_account", { id: a.id, onProgress });
           count++;
         } catch (e) {
-          failures.push(`${a.name}: ${errorText(e)}`);
+          failures.push(`${accountLabel(a)}: ${errorText(e)}`);
         }
       }
       const current = selectedRef.current;
@@ -543,22 +542,21 @@ export default function App() {
                 }}
               >
                 <span className={`account-avatar color-${i % 4}`}>
-                  {initials(a.name)}
+                  {initials(accountDisplayName(a))}
                 </span>
                 <span className="account-copy">
                   <strong>
-                    {a.name}
+                    <span title={accountLabel(a)}>{accountLabel(a)}</span>
                     {a.isDefault && (
                       <span title="По умолчанию" className="default-dot" />
                     )}
                   </strong>
-                  <small title={a.email}>{a.email}</small>
                   {!a.enabled && <small>Отключён</small>}
                 </span>
               </button>
               <button
                 className="icon-button account-more"
-                aria-label={`Меню ${a.name}`}
+                aria-label={`Меню ${accountLabel(a)}`}
                 aria-expanded={menu === a.id}
                 onClick={() => setMenu(menu === a.id ? "" : a.id)}
               >
@@ -765,24 +763,9 @@ export default function App() {
             </div>
             <div className="account-filter">
               <span className="tiny-dot" />
-              <select
-                aria-label="Фильтр аккаунта"
-                value={accountId}
-                onChange={(e) => {
-                  setAccountId(e.target.value);
-                  resetViewer();
-                }}
-              >
-                <option value="">Все аккаунты</option>
-                {accounts
-                  .filter((a) => a.enabled)
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} · {a.email}
-                    </option>
-                  ))}
-              </select>
-              <ChevronDown size={14} />
+              <span className="account-filter-label">
+                {activeAccount ? accountLabel(activeAccount) : "Все аккаунты"}
+              </span>
             </div>
             <div className="tabs">
               {[

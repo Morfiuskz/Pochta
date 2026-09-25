@@ -3,6 +3,7 @@ import { Paperclip, Send, Trash2, X, LoaderCircle } from "lucide-react";
 import { Modal } from "./Modal";
 import CustomDropdown from "./CustomDropdown";
 import { api, errorText } from "./api";
+import { accountLabel } from "./mail-ui";
 import type { Account, Compose, Attachment } from "./types";
 function hasContent(draft: Compose) {
   return Boolean(
@@ -151,7 +152,7 @@ export default function ComposeModal({
                 .filter((a) => a.enabled)
                 .map((a) => ({
                   value: a.id,
-                  label: `${a.name} <${a.email}>`,
+                  label: accountLabel(a),
                 }))}
             />
           </div>

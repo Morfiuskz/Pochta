@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, LoaderCircle, ShieldCheck } from "lucide-react";
 import { Modal } from "./Modal";
 import { api, errorText } from "./api";
+import { accountLabel } from "./mail-ui";
 import {
   applyProvider,
   detectProvider,
@@ -262,8 +263,7 @@ export default function AccountModal({
             ) : (
               <div className="onboarding-fields">
                 <div>
-                  <strong>{a.name || a.email}</strong>
-                  {a.name && <p className="muted">{a.email}</p>}
+                  <strong>{accountLabel(a)}</strong>
                 </div>
                 {!configured ? (
                   <>

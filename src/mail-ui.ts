@@ -1,5 +1,17 @@
 import DOMPurify from "dompurify";
 import type { Account, Compose, Message } from "./types";
+export function accountDisplayName(account: Pick<Account, "name" | "email">) {
+  const name = account.name.trim();
+  const email = account.email.trim();
+  return name && name.toLocaleLowerCase() !== email.toLocaleLowerCase()
+    ? name
+    : email;
+}
+export function accountLabel(account: Pick<Account, "name" | "email">) {
+  const name = accountDisplayName(account);
+  const email = account.email.trim();
+  return name === email ? email : `${name} · ${email}`;
+}
 export function safeEmail(html: string, images = false) {
   const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [

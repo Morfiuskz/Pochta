@@ -283,6 +283,12 @@ small {
   align-items: center;
   gap: 7px;
 }
+.account-copy strong > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .account-copy small {
   display: block;
   overflow: hidden;
@@ -659,16 +665,13 @@ main {
   width: calc(100% - 46px);
   color: #868ea7;
 }
-.account-filter select {
-  border: 0;
-  background: none;
-  appearance: none;
-  padding: 0;
-  width: auto;
+.account-filter-label {
   max-width: 270px;
   color: #9aa1b7;
   font-size: 10px;
-  box-shadow: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tiny-dot {
   width: 5px;
