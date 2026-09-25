@@ -1,66 +1,49 @@
-# Статус
+# Статус проекта
 
-Дата: 2026-09-25. Приложение переименовано в «Почта», добавлены onboarding и OAuth-инфраструктура. Реализован MVP. Основной пользовательский сценарий проверен через native UI на изолированных локальных IMAP/SMTP-серверах. Windows NSIS сборка предыдущего MVP успешна; она не содержит описанного ниже нового onboarding. Новые изменения проверяются на macOS.
+Дата: 2026-09-25. «Почта» готовится к первому публичному Windows release **v0.1.0**. Основная среда разработки и ручного тестирования — Windows 10/11.
 
-## Текущее продолжение: onboarding и OAuth
+## Работает сейчас
 
-- Пользовательское имя «Почта»: sidebar, modal, HTML/window title, product/installer metadata; конверт и внутренний identifier сохранены.
-- Первый шаг: email и optional display name. Presets Яндекс/Mail/Gmail/Microsoft/iCloud → HTTPS Thunderbird ISPDB → явная ручная форма. Неизвестный домен не превращается в выдуманные imap/smtp хосты. Собственный домен можно связать с Яндекс 360 вручную.
-- Отдельные методы Password/OAuth, backward-compatible serde default для существующих аккаунтов. Сохранение требует успешной проверки IMAP и SMTP.
-- Яндекс: реализованы code + PKCE S256/state, loopback callback, browser login и IMAP/SMTP XOAUTH2; требуется Client ID владельца. Официальный refresh требует Client Secret, поэтому без broker после истечения токена UI предлагает безопасный повторный вход.
-- Google: реализован официальный Desktop flow через системный браузер — Authorization Code + PKCE/state, отдельный loopback callback, scope `https://mail.google.com/`, IMAP/SMTP XOAUTH2, secure storage и автоматический refresh. Gmail/Googlemail распознаются напрямую; Google Workspace предлагается только по ISPDB-серверам Google или ручному выбору. Требуется Desktop Client ID владельца и настройка consent screen/test users.
-- Mail: зарегистрированы Client ID и loopback redirect `127.0.0.1:43825`; официально подтверждены discovery, PKCE S256/state, `openid mail.imap offline_access`, refresh token и единый XOAUTH2 bearer format для IMAP/SMTP. В `broker/` реализован stateless HTTPS token broker с секретом из environment, фиксированным Mail upstream, Basic auth, валидацией, лимитами и deploy-конфигурацией. Реальный deploy и live flow ещё не выполнены. Для VK WorkSpace/custom-domain OAuth Mail публично не подтверждён — используется app-password/manual fallback. Microsoft OAuth пока не реализован; Outlook не предлагает пароль как замену OAuth.
-- Токены только в системном vault, не IPC/SQLite/log. OAuth-хосты ограничены provider; TLS validation сохранена. Конфигурация и контракт broker: [OAUTH.md](OAUTH.md).
-- Manual IMAP/SMTP, TLS/STARTTLS/None, отдельные credentials SMTP работают; POP3 явно отключён («позже»).
-- В браузере проверены компактная форма, Яндекс, app-password, неизвестный домен и ручной fallback. Исправлено сохранение чужого preset при возврате и смене email.
+- Несколько аккаунтов, unified inbox и фильтрация через sidebar.
+- IMAP/SMTP, MIME, отправка, Reply/Reply All и вложения.
+- Серверные read/unread, star и перенос в корзину.
+- Локальный SQLite-кэш, FTS5 search и локальные черновики.
+- Progressive sync: первая пачка до 50 писем сразу отдаётся в UI, фоновая догрузка продолжается до лимита 200; уже загруженные письма сохраняются при ошибке.
+- Локальная сортировка писем по дате и отправителю.
+- Трёхколоночный тёмный UI, draggable-разделители с сохранением размеров и custom dropdowns.
+- Очистка HTML, sandboxed viewer и блокировка remote images по умолчанию.
+- Пароли и OAuth-токены хранятся в системном credential storage, а не в SQLite или React state.
 
-## Проверка текущих изменений
+## Провайдеры и OAuth
 
-- Mail OAuth broker: `npm run typecheck` и `npm run build` в `broker/` успешны; локально проверены `GET /health` (200/no-store) и безопасный отказ для чужого Client ID (401). Реальный Mail token exchange не выполнялся без серверного Client Secret и одноразового authorization code.
-- Для завершения Yandex OAuth и добавления Google OAuth выполнены ровно `npm run typecheck` и `cargo check --manifest-path src-tauri/Cargo.toml --locked`: успешно. Полные test suites и release build не запускались; live OAuth оставлен для ручной проверки с Client IDs владельца.
-- TypeScript typecheck, ESLint: успешно.
-- Frontend: 5 тестов, включая domain matching, fallback/auth selection и сохранение display metadata.
-- Rust: 9 тестов, включая discovery parsing/fallback, PKCE/state, XOAUTH2 payload, старый формат аккаунтов и сохранённые loopback IMAP/SMTP проверки.
-- Cargo check, Clippy all-targets с `-D warnings`, rustfmt: успешно. Есть прежнее предупреждение future incompatibility `imap-proto 0.10.2`.
-- Vite production build: успешно. Tauri release `.app`: успешно, `src-tauri/target/release/bundle/macos/Почта.app`. Native запуск, новое имя, onboarding и понятный отказ OAuth без конфигурации проверены.
-- Native ISPDB: настройки GMX загружены; HTTP 404 для Fastmail корректно перевёл в manual fallback. Пароли и реальные аккаунты для этой проверки не использовались.
-- На Windows ещё нужны browser callback, Credential Manager для tokens, IMAP/SMTP XOAUTH2 и Google refresh; для Mail нужны deploy broker на `oauth.morfius.ru`, серверный `MAIL_OAUTH_CLIENT_SECRET` и live-проверка обычного Mail-аккаунта. Поддержка OAuth для VK WorkSpace/custom-domain требует отдельного официального подтверждения.
+- **Яндекс:** OAuth Authorization Code + PKCE/state, loopback callback и IMAP/SMTP XOAUTH2 работают.
+- **Google/Gmail:** Desktop OAuth + PKCE/state, refresh и IMAP/SMTP XOAUTH2 реализованы и live-проверены. Google OAuth app пока работает в режиме Testing для добавленных Test users.
+- **Mail.ru:** OAuth + PKCE/state, refresh и IMAP/SMTP XOAUTH2 реализованы и live-проверены через stateless HTTPS broker.
+- **Mail broker:** развёрнут через Coolify/Traefik на `https://oauth.morfius.ru`; desktop endpoint — `https://oauth.morfius.ru/mail/token`. Broker не хранит письма или пользовательские токены.
+- **VK WorkSpace/custom domains:** используется app-password/manual fallback, пока применимость Mail OAuth официально не подтверждена.
+- **iCloud и другие совместимые IMAP/SMTP-провайдеры:** ISPDB/manual setup и пароль приложения, где это поддерживает провайдер.
+- **Outlook/Microsoft:** пока не реализован; требуется Microsoft OAuth.
 
-## Реализовано
+Подробности: [OAUTH.md](OAUTH.md).
 
-- Трёхколоночный desktop UI с сохраняемыми draggable-разделителями; account modal, меню, default sender, rename и отключение.
-- Список писем локально сортируется по дате или нормализованному имени отправителя; ссылка Morfius в sidebar открывается системным браузером.
-- Реальные Rust IMAP/SMTP команды, TLS/STARTTLS, MIME, вложения, Reply/Reply All.
-- SQLite cache + FTS5; локальные drafts и состояние папки/аккаунта.
-- Системное хранение секретов; безопасный HTML и блокировка картинок.
-- Серверные read/unread, star, delete; startup/manual sync.
-- Windows NSIS workflow, иконки, lockfiles, документация.
+## Проверено
 
-## Завершено при продолжении
+- Яндекс, Google и Mail.ru OAuth flows live-проверены, включая получение authorization code, token exchange и почтовую OAuth-аутентификацию.
+- Mail broker работает по HTTPS в production-развёртывании Coolify/Traefik.
+- Progressive sync показывает прогресс и постепенно обновляет список писем.
+- Текущие UI-улучшения работают: сортировка, custom dropdowns, выбор аккаунта только в sidebar и сохраняемые размеры колонок.
+- Windows NSIS build поддерживается; installer должен распространяться через GitHub Releases, а не через Git.
 
-- Проверен flow: добавить аккаунт → IMAP/SMTP connection test → получить/открыть HTML-письмо с вложением → найти текст через SQLite → создать/сохранить/открыть черновик → SMTP send → Sent copy → Reply → read/unread/star → Trash → rename → default sender между двумя аккаунтами.
-- Системный vault на macOS: сохранение/чтение пароля работают; пароль отсутствует в тестовой SQLite. Rename сохранил email и логины. После перезапуска кэш загрузился и startup sync завершился.
-- Исправлен белый фон iframe в native WebView; тёмный HTML-просмотр визуально проверен после пересборки.
-- При смене папки сбрасывается фильтр, поэтому «Непрочитанные» больше не скрывает локальные черновики.
-- Пустой compose не создаёт черновик; фокус ставится в поле получателя. Проверено в native UI и по количеству drafts в SQLite.
-- Сохранение/rename/default больше не переставляют аккаунты в sidebar (SQLite UPSERT сохраняет rowid); расширен существующий focused persistence test.
-- Отключение выбранного аккаунта очищает viewer даже в объединённом inbox.
-- Завершён preset iCloud SMTP: 587/STARTTLS.
+## Ограничения v0.1.0
 
-## Проверка предыдущего MVP
+- До 200 последних писем на папку за проход; подгрузки более старой почты пока нет.
+- Письма больше 25 МБ пропускаются; отправляемые вложения ограничены суммарно 20 МБ.
+- Поиск работает по локальному кэшу и возвращает до 1000 результатов.
+- Нет push/IDLE, thread grouping, custom folder mapping, редактирования серверных drafts и окончательного удаления.
+- Кэш писем не имеет дополнительного шифрования поверх защиты ОС.
+- Google scope `https://mail.google.com/` требует подготовки публичного consent и проверки требований verification.
+- Первый Windows installer планируется без цифровой подписи.
 
-- `npm run typecheck`, `npm run lint`, `npm run build`: успешно.
-- Vitest: 3 теста — HTML isolation, opt-in images, Reply All.
-- Финальный локальный Rust pass: 4 focused теста (конфигурация, MIME, folder mapping, SQLite/FTS/order/default/rename). Ранее прошедшие 2 loopback integration tests локально не повторялись; полный набор из 6 успешно прошёл в финальном Windows CI.
-- `cargo check`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt`: успешно.
-- Native macOS release ранее собран; текущая QA `.app` пересобрана и проверена через native UI.
-- [Финальный Windows NSIS build](https://github.com/Morfiuskz/Pochta/actions/runs/35962350882) для исходного commit `ed879a60a24ab1f522756433993d4d4ea1d9493f` завершился успешно: typecheck, lint, 3 frontend и 6 Rust тестов, fmt, Clippy и сборка installer.
-- Артефакт `Morfius-Mail-Windows-x64` скачан в `artifacts/windows/Morfius Mail_0.1.0_x64-setup.exe` (3,1 МБ). Файл подтверждён как Windows NSIS executable; каталог artifacts исключён из Git.
-- `npm audit`: 0 уязвимостей после обновления Vitest.
-- UI проверен в браузере: основной экран, account modal, автоконфигурация Gmail, фокус и адаптация к высоте окна.
+## До публичного release
 
-Реального почтового аккаунта в задаче нет: остаётся live-проверка внешнего провайдера/TLS и интерактивная установка/Windows Credential Manager на Windows. Это не подменяется локальными fixture-тестами. Loopback-тесты используют только синтетические данные и не отправляют письма внешним адресатам.
-
-## Ограничения
-
-200 последних писем на папку за проход; старый кэш сохраняется. Письма >25 МБ пропускаются, поиск до 1000 результатов, отправляемые вложения ≤20 МБ. Custom folders, OAuth Microsoft, push, server drafts editing, CID-картинки, активные ссылки и окончательное удаление не входят в MVP. Кэш писем не зашифрован. Google scope `https://mail.google.com/` требует проверки приложения перед публичным распространением. Windows installer без подписи. `imap-proto 0.10.2` выдаёт предупреждение о совместимости с будущей версией Rust.
+Остаются чистая Windows release-сборка, ручной тест installer, скриншоты, финальный просмотр публичных страниц, публикация GitHub Release v0.1.0 и подготовка Google OAuth к внешним пользователям. Checklist ведётся в [ROADMAP.md](ROADMAP.md).

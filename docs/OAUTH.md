@@ -17,6 +17,7 @@
   },
   "google": {
     "clientId": "",
+    "clientSecret": "",
     "redirectUri": "http://127.0.0.1:43823/oauth/callback"
   },
   "mail": {
@@ -27,7 +28,7 @@
 }
 ```
 
-Это публичная конфигурация, **не место для client secret, access/refresh tokens**. Файл читается при входе, пересборка не нужна. Redirect URI регистрируется у провайдера в точности, включая порт и отсутствие завершающего `/`. Callback слушает только IPv4 loopback, ждёт до 3 минут; занятый порт даёт понятную ошибку.
+Это локальная конфигурация владельца сборки, её нельзя коммитить. Google `clientSecret` нужен текущей зарегистрированной конфигурации и остаётся только в локальном файле; access/refresh tokens сюда никогда не записываются. Mail Client Secret хранится только на broker-сервере. Файл читается при входе, пересборка не нужна. Redirect URI регистрируется у провайдера в точности, включая порт и отсутствие завершающего `/`. Callback слушает только IPv4 loopback, ждёт до 3 минут; занятый порт даёт понятную ошибку.
 
 ## Яндекс / Яндекс 360
 
@@ -37,7 +38,7 @@
 
 ## Google / Gmail
 
-В [Google Cloud Console](https://console.cloud.google.com/apis/credentials) создайте проект и OAuth Client ID типа **Desktop app**, настройте OAuth consent screen и добавьте Gmail-аккаунты в Test users, пока приложение имеет статус Testing. В `oauth.json` нужен только публичный Client ID; Client Secret не нужен. Приложение использует точный loopback URI `http://127.0.0.1:43823/oauth/callback`.
+В [Google Cloud Console](https://console.cloud.google.com/apis/credentials) создайте проект и OAuth Client ID типа **Desktop app**, настройте OAuth consent screen и добавьте Gmail-аккаунты в Test users, пока приложение имеет статус Testing. Текущая зарегистрированная конфигурация требует `clientSecret` при token exchange, поэтому он задаётся только в локальном, некоммитящемся `oauth.json` и не выводится в UI или логи. Приложение использует точный loopback URI `http://127.0.0.1:43823/oauth/callback`.
 
 Реализованы системный браузер, Authorization Code + PKCE S256, state, loopback timeout, обмен кода, безопасное хранение access/refresh token, автоматический refresh и IMAP/SMTP XOAUTH2. Запрашивается только официальный scope `https://mail.google.com/`, необходимый для Gmail IMAP/SMTP. Он даёт полный доступ к почте и для публичного приложения требует OAuth verification, соблюдения Google API Services User Data Policy и, возможно, security assessment; в Testing доступны только добавленные тестовые пользователи, а их grants обычно истекают через 7 дней. Gmail и Googlemail определяются автоматически; Google Workspace на собственном домене предлагается только если ISPDB вернул серверы Google или пользователь выбрал «Google / Gmail» вручную.
 
@@ -66,11 +67,11 @@ Release prerequisite / TODO — сейчас не выполнять:
 - token endpoint поддерживает только client authentication `client_secret_basic` и `client_secret_post`; официальный пример выполняет обмен с сервера и передаёт Client Secret через HTTP Basic;
 - XOAUTH2 для `imap.mail.ru` и `smtp.mail.ru` использует SASL payload `user=<email>\x01auth=Bearer <access_token>\x01\x01`, закодированный Base64. Официальные серверы и порты: IMAP 993/TLS, SMTP 465/TLS.
 
-Для приложения «Почта» зарегистрированы публичный Client ID `01a0d7ea156e7e919401cdd18b520c21` и точный loopback redirect `http://127.0.0.1:43825/oauth/callback`. Client Secret остаётся только на broker-сервере. Регистрация параметров завершена, но полный browser → broker → IMAP/SMTP flow ещё требует live-проверки после развёртывания broker.
+Для приложения «Почта» зарегистрированы публичный Client ID `01a0d7ea156e7e919401cdd18b520c21` и точный loopback redirect `http://127.0.0.1:43825/oauth/callback`. Client Secret остаётся только на broker-сервере. Полный browser → broker → IMAP/SMTP flow live-проверен.
 
 [Официальная справка обычной Почты Mail](https://help.mail.ru/mail/security/protection/settings/) подтверждает OAuth для внешних почтовых программ, а [инструкция подключения клиента](https://help.mail.ru/mail/login/mailer/) отдельно сохраняет fallback через пароль приложения. Для VK WorkSpace/custom-domain ящиков [публичная инструкция для почтовых клиентов](https://workspace.vk.ru/docs/saas/ru/mail/login/client-password) подтверждает пароль приложения, но не подтверждает применение OAuth Mail к таким ящикам. До согласования с Mail/VK WorkSpace для них следует использовать пароль приложения, а OAuth не заявлять как гарантированно поддерживаемый.
 
-Клиентская часть реализована: актуальный OpenID discovery и ограничение OAuth endpoints доменами Mail, системный браузер, PKCE S256/state, loopback callback, обмен authorization code и refresh через broker, secure storage и стандартный IMAP/SMTP XOAUTH2. Client Secret нельзя безопасно встроить в desktop-бинарь, поэтому Mail включается **только с настроенным HTTPS `brokerUrl`**. Минимальный broker находится в [`broker/`](../broker/README.md); его ещё нужно развернуть на `oauth.morfius.ru` и передать секрет через environment. До этого Mail OAuth не готов к реальному использованию; app-password IMAP/SMTP работает независимо.
+Клиентская часть реализована: актуальный OpenID discovery и ограничение OAuth endpoints доменами Mail, системный браузер, PKCE S256/state, loopback callback, обмен authorization code и refresh через broker, secure storage и стандартный IMAP/SMTP XOAUTH2. Client Secret нельзя безопасно встроить в desktop-бинарь, поэтому Mail включается **только с настроенным HTTPS `brokerUrl`**. Минимальный broker находится в [`broker/`](../broker/README.md) и развёрнут через Coolify/Traefik на `https://oauth.morfius.ru`; серверный секрет передаётся через environment. App-password IMAP/SMTP продолжает работать независимо.
 
 ### Контракт HTTPS broker
 
@@ -91,4 +92,4 @@ Access/refresh token, срок действия и привязка к email/pro
 
 Microsoft представлен в provider model, но OAuth-адаптер пока не реализован. Gmail допускает пароль приложения как ручной fallback при соответствующих настройках аккаунта. Outlook требует OAuth и не предлагает пароль как рабочую замену.
 
-Реальная выдача токенов, loopback callback, IMAP/SMTP XOAUTH2, refresh/отзыв и Windows Credential Manager требуют проверки с собственными зарегистрированными приложениями. Локальные проверки не подменяют такую проверку.
+Яндекс, Google и Mail.ru live-проверены с зарегистрированными приложениями, включая loopback callback, token exchange и IMAP/SMTP XOAUTH2. Перед публичным Google-релизом всё ещё нужны production consent и применимая verification; отзыв разрешений выполняется пользователем у провайдера.
