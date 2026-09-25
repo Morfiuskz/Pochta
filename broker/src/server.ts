@@ -368,8 +368,9 @@ const port = Number(process.env.PORT || 8787);
 if (!Number.isInteger(port) || port < 1 || port > 65_535) {
   throw new Error("Invalid PORT");
 }
-server.listen(port, "127.0.0.1", () => {
-  console.log(`Mail OAuth broker listens on 127.0.0.1:${port}`);
+const host = process.env.HOST || "127.0.0.1";
+server.listen(port, host, () => {
+  console.log(`Mail OAuth broker listens on ${host}:${port}`);
 });
 
 const shutdown = () => server.close(() => process.exit(0));
