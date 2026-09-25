@@ -34,6 +34,19 @@
 - Текущие UI-улучшения работают: сортировка, custom dropdowns, выбор аккаунта только в sidebar и сохраняемые размеры колонок.
 - Windows NSIS build поддерживается; installer должен распространяться через GitHub Releases, а не через Git.
 
+## Windows production build v0.1.0
+
+25 сентября 2026 года production build успешно прошёл на Windows: `npm run typecheck`, `npm run build`, `cargo check --manifest-path src-tauri/Cargo.toml --locked` и `npm run tauri build` завершились без ошибок.
+
+- Installer: `src-tauri\target\release\bundle\nsis\Почта_0.1.0_x64-setup.exe`.
+- Размер: 4 052 345 байт (3,86 МиБ).
+- SHA-256: `5DE40967251B0CC7085C2EB8AAF6DCC498F7FF4B75E83D866FD29E20DBADEF89`.
+- Windows metadata: Product Name и File Description — «Почта», File Version — `0.1.0`.
+- Installer не подписан, как и запланировано для первого релиза.
+- Rust предупредил о future incompatibility зависимости `imap-proto 0.10.2`; также linker сообщил о штатном создании import library. Сборку эти предупреждения не прервали.
+
+GitHub Release пока не создан. До публикации installer нужно вручную проверить на чистой Windows 10/11 x64: установку и SmartScreen, имя/иконку/ярлыки, первый и повторный запуск, сохранение данных и credentials с identifier `com.morfius.mail`, OAuth Яндекс/Google/Mail.ru, IMAP sync, SMTP send, вложения, обновление поверх прежней установки и удаление приложения.
+
 ## Ограничения v0.1.0
 
 - До 200 последних писем на папку за проход; подгрузки более старой почты пока нет.

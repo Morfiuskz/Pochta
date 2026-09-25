@@ -5,6 +5,13 @@ src-tauri/target/
 *.db
 *.db-*
 *.sqlite*
+oauth.json
+secrets/
+tokens/
+secrets.json
+tokens.json
+*.secret
+*.token
 .env
 .env.*
 !.env.example
