@@ -102,12 +102,7 @@ fn imap_sync_flags_delete_and_empty_folder() {
     let mut c = db::open(&path).unwrap();
     db::save_account(&mut c, &a).unwrap();
     let progress = |_| {};
-    mail::run(
-        &a,
-        "fixture-password",
-        mail::Job::Sync(&path, &progress),
-    )
-    .unwrap();
+    mail::run(&a, "fixture-password", mail::Job::Sync(&path, &progress)).unwrap();
     let id = "fixture:INBOX:42:7";
     let m = db::message(&c, id).unwrap();
     assert_eq!(m.text, "Hello from IMAP");

@@ -51,9 +51,9 @@ fn parse(xml: &str, email: &str) -> Option<Discovered> {
                 let password = n.children().any(|c| {
                     c.has_tag_name("authentication") && c.text() == Some("password-cleartext")
                 });
-                let oauth = n.children().any(|c| {
-                    c.has_tag_name("authentication") && c.text() == Some("OAuth2")
-                });
+                let oauth = n
+                    .children()
+                    .any(|c| c.has_tag_name("authentication") && c.text() == Some("OAuth2"));
                 if !password && !oauth {
                     return None;
                 }

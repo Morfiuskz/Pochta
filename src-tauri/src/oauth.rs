@@ -206,8 +206,8 @@ fn exchange(provider: &str, c: &Config, fields: &[(&str, &str)], email: &str) ->
         if body.len() > 16384 {
             return Err("Провайдер отклонил OAuth token exchange".into());
         }
-        let oauth: OAuthErrorResponse = serde_json::from_slice(&body)
-            .map_err(|_| "Провайдер отклонил OAuth token exchange")?;
+        let oauth: OAuthErrorResponse =
+            serde_json::from_slice(&body).map_err(|_| "Провайдер отклонил OAuth token exchange")?;
         let error: String = oauth
             .error
             .chars()
@@ -254,9 +254,7 @@ fn exchange(provider: &str, c: &Config, fields: &[(&str, &str)], email: &str) ->
         || t.access_token.len() > 16384
         || t.access_token.chars().any(char::is_control)
         || t.refresh_token.as_ref().is_some_and(|refresh| {
-            refresh.is_empty()
-                || refresh.len() > 16384
-                || refresh.chars().any(char::is_control)
+            refresh.is_empty() || refresh.len() > 16384 || refresh.chars().any(char::is_control)
         })
         || t.expires_in == 0
     {
