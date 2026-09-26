@@ -160,7 +160,11 @@ function one(form: URLSearchParams, name: string, maxLength: number) {
     );
   }
   const value = values[0];
-  if (value.length > maxLength || /[\u0000-\u001f\u007f]/u.test(value)) {
+  const hasControlCharacter = [...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 0x1f || code === 0x7f;
+  });
+  if (value.length > maxLength || hasControlCharacter) {
     throw new RequestError(
       400,
       "invalid_request",
